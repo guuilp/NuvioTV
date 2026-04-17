@@ -36,6 +36,32 @@ internal class PlayerMediaSourceFactory {
         subtitleConfigurations: List<MediaItem.SubtitleConfiguration> = emptyList(),
         mimeTypeOverride: String? = null
     ): MediaSource {
+        val resolvedMimeType = mimeTypeOverride ?: inferMimeType(url = url, filename = null)
+        val mediaItemBuilder = MediaItem.Builder().setUri(url)
+        resolvedMimeType?.let(mediaItemBuilder::setMimeType)
+
+        if (subtitleConfigurations.isNotEmpty()) {
+            mediaItemBuilder.setSubtitleConfigurations(subtitleConfigurations)
+        }
+
+        return createMediaSource(mediaItemBuilder.build(), headers)
+    }
+
+    /**
+     * Creates a [MediaSource] from a pre-built [MediaItem] that already has [androidx.media3.common.MediaMetadata]
+     * attached (e.g. title, artist, artwork). The URL and MIME type are read from the item itself.
+     *
+     * This overload is the preferred path when the caller needs rich metadata to flow through
+     * the [androidx.media3.session.MediaSession] to the Android notification system.
+     */
+    fun createMediaSource(
+        mediaItem: MediaItem,
+        headers: Map<String, String>
+    ): MediaSource {
+        val url = mediaItem.localConfiguration?.uri?.toString() ?: ""
+        val mimeTypeOverride = mediaItem.localConfiguration?.mimeType
+        val subtitleConfigurations = mediaItem.localConfiguration?.subtitleConfigurations ?: emptyList()
+
         val sanitizedHeaders = sanitizeHeaders(headers)
         val httpDataSourceFactory = DefaultHttpDataSource.Factory().apply {
             setConnectTimeoutMs(8000)
@@ -49,14 +75,6 @@ internal class PlayerMediaSourceFactory {
         val isHls = resolvedMimeType == MimeTypes.APPLICATION_M3U8
         val isDash = resolvedMimeType == MimeTypes.APPLICATION_MPD
 
-        val mediaItemBuilder = MediaItem.Builder().setUri(url)
-        resolvedMimeType?.let(mediaItemBuilder::setMimeType)
-
-        if (subtitleConfigurations.isNotEmpty()) {
-            mediaItemBuilder.setSubtitleConfigurations(subtitleConfigurations)
-        }
-
-        val mediaItem = mediaItemBuilder.build()
         val extractorsFactory = customExtractorsFactory ?: DefaultExtractorsFactory()
         val defaultFactory = DefaultMediaSourceFactory(httpDataSourceFactory, extractorsFactory).apply {
             customSubtitleParserFactory?.let { parserFactory ->

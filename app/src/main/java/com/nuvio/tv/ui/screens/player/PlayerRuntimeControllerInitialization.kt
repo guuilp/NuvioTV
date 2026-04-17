@@ -219,7 +219,6 @@ internal fun PlayerRuntimeController.initializePlayer(url: String, headers: Map<
                 
                 setHandleAudioBecomingNoisy(true)
 
-                
                 try {
                     currentMediaSession?.release()
                     if (canAdvertiseSession()) {
@@ -239,17 +238,21 @@ internal fun PlayerRuntimeController.initializePlayer(url: String, headers: Map<
                 applySubtitlePreferences(preferred, secondary)
                 applyStartupSubtitlePreparation(startupSubtitlePreparation)
                 val startupSubtitleConfigurations = buildStartupSubtitleConfigurations(startupSubtitlePreparation)
+                // Build a MediaItem with rich MediaMetadata so the MediaSession (and
+                // the Android phone media notification) shows title, series name and artwork.
+                val enrichedMediaItem = buildMediaItemWithMetadata(
+                    url = url,
+                    subtitleConfigurations = startupSubtitleConfigurations,
+                    mimeTypeOverride = currentStreamMimeType
+                )
                 setMediaSource(
                     mediaSourceFactory.createMediaSource(
-                        url = url,
-                        headers = headers,
-                        subtitleConfigurations = startupSubtitleConfigurations,
-                        mimeTypeOverride = currentStreamMimeType
+                        mediaItem = enrichedMediaItem,
+                        headers = headers
                     )
                 )
                 playWhenReady = true
                 prepare()
-
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         val playerDuration = duration
