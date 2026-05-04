@@ -264,7 +264,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
             if (useTrakt) {
                 traktProgressService.observeRemoteProgressLoaded()
             } else {
-                kotlinx.coroutines.flow.flowOf(true)
+                flowOf(true)
             }
         }.distinctUntilChanged()
     }
