@@ -2520,12 +2520,37 @@ private fun parseEpisodeReleaseInstant(raw: String?): Instant? {
  * Determines whether an episode has actually aired by comparing the full release
  * instant (including time-of-day when available) against the current moment.
  * If the raw string only contains a date (no time component), falls back to
- * date-only comparison (start of day UTC) so episodes without a known air time
- * are still treated as aired once the calendar date arrives.
+ * date-only comparison in the user's local timezone so "May 6" means May 6
+ * locally, not midnight UTC.
  */
 private fun hasEpisodeAired(raw: String?, fallback: Boolean = true): Boolean {
-    val instant = parseEpisodeReleaseInstant(raw) ?: return fallback
-    return !instant.isAfter(Instant.now())
+    if (raw.isNullOrBlank()) return fallback
+    val value = raw.trim()
+
+    // Try full timestamp parsing first (Instant, OffsetDateTime, LocalDateTime).
+    // These are timezone-aware: the data source tells us exactly when it airs.
+    val instant = runCatching { Instant.parse(value) }.getOrNull()
+        ?: runCatching { OffsetDateTime.parse(value).toInstant() }.getOrNull()
+        ?: runCatching { LocalDateTime.parse(value).atZone(ZoneOffset.UTC).toInstant() }.getOrNull()
+
+    if (instant != null) {
+        return !instant.isAfter(Instant.now())
+    }
+
+    // Date-only strings (e.g. "2026-05-06") have no timezone info.
+    // Treat them as calendar dates in the user's local timezone so
+    // "May 6" means May 6 for the viewer, not midnight UTC.
+    val releaseDate = runCatching { LocalDate.parse(value) }.getOrNull()
+        ?: runCatching {
+            val datePortion = Regex("\\b\\d{4}-\\d{2}-\\d{2}\\b").find(value)?.value
+            datePortion?.let { LocalDate.parse(it) }
+        }.getOrNull()
+
+    if (releaseDate != null) {
+        return !releaseDate.isAfter(LocalDate.now(ZoneId.systemDefault()))
+    }
+
+    return fallback
 }
 
 private suspend fun HomeViewModel.resolveContinueWatchingTmdbData(
