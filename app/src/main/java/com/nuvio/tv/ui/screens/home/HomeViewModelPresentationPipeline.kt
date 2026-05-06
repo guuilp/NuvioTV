@@ -220,6 +220,11 @@ internal fun HomeViewModel.observeLayoutPreferencesPipeline() {
                     )
                 }
                 if (shouldRefreshCatalogPresentation) {
+                    // When switching to GRID layout, load all pending lazy catalogs
+                    // since grid doesn't support placeholder shimmer rows.
+                    if (prefs.layout == HomeLayout.GRID) {
+                        loadAllPendingLazyCatalogs()
+                    }
                     // When hero catalog keys change, load any hero catalogs
                     // not yet in catalogsMap (e.g., after startup race or
                     // when user changes hero selection in settings).
@@ -481,6 +486,11 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
         } finally {
             if (_enrichingItemId.value == item.id) {
                 setEnrichingItemId(null)
+                // If enrichment completed but no enriched data exists for this item,
+                // mark it as failed so the UI can show addon data immediately.
+                if (item.id !in _enrichedPreviews.value) {
+                    _failedEnrichmentIds.value = _failedEnrichmentIds.value + item.id
+                }
             }
         }
     }

@@ -18,10 +18,8 @@ import coil3.bitmapFactoryMaxParallelism
 import okio.Path.Companion.toOkioPath
 import com.nuvio.tv.core.runtime.PluginRuntimeHooks
 import com.nuvio.tv.core.sync.StartupSyncService
+import com.nuvio.tv.core.sync.androidtv.AndroidTvChannelSyncService
 import dagger.hilt.android.HiltAndroidApp
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -33,6 +31,7 @@ import javax.inject.Inject
 class NuvioApplication : Application(), SingletonImageLoader.Factory {
 
     @Inject lateinit var startupSyncService: StartupSyncService
+    @Inject lateinit var androidTvChannelSyncService: AndroidTvChannelSyncService
 
     companion object {
         /**
@@ -62,12 +61,12 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         PluginRuntimeHooks.onApplicationCreate(this)
-        // Warm locale cache off main thread so attachBaseContext never hits disk
-        CoroutineScope(Dispatchers.IO).launch {
-            val tag = getSharedPreferences("app_locale", Context.MODE_PRIVATE)
-                .getString("locale_tag", null)
-            LocaleCache.localeTag = tag ?: ""
-        }
+        androidTvChannelSyncService.start()
+        // Load locale synchronously so it's available before Activity.attachBaseContext.
+        // SharedPreferences reads are fast (cached in memory after first access).
+        val tag = getSharedPreferences("app_locale", Context.MODE_PRIVATE)
+            .getString("locale_tag", null)
+        LocaleCache.localeTag = tag ?: ""
     }
 
     override fun newImageLoader(context: android.content.Context): ImageLoader {

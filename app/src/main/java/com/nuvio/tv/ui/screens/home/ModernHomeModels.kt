@@ -1,9 +1,7 @@
 package com.nuvio.tv.ui.screens.home
 
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -25,7 +23,7 @@ internal val YEAR_REGEX = Regex("""\b(19|20)\d{2}\b""")
 internal const val MODERN_HERO_TEXT_WIDTH_FRACTION = 0.42f
 internal const val MODERN_HERO_MEDIA_WIDTH_FRACTION = 0.72f
 internal const val MODERN_TRAILER_OVERSCAN_ZOOM = 1.35f
-internal const val MODERN_HERO_FOCUS_DEBOUNCE_MS = 250L
+internal const val MODERN_HERO_FOCUS_DEBOUNCE_MS = 450L
 internal val MODERN_ROW_HEADER_FOCUS_INSET = 40.dp
 internal const val MODERN_CONTINUE_WATCHING_ROW_KEY = "continue_watching"
 internal val MODERN_LANDSCAPE_LOGO_GRADIENT = Brush.verticalGradient(
@@ -51,7 +49,7 @@ data class HeroPreview(
     val statusText: String? = null,
     val countryText: String? = null,
     val languageText: String? = null,
-    val genres: List<String>,
+    val genres: StableList<String>,
     val poster: String?,
     val backdrop: String?,
     val imageUrl: String?,
@@ -86,7 +84,8 @@ sealed class ModernPayload {
         val focusGifUrl: String?,
         val heroBackdropUrl: String?,
         val heroVideoUrl: String?,
-        val titleLogoUrl: String?
+        val titleLogoUrl: String?,
+        val coverEmoji: String? = null
     ) : ModernPayload()
 }
 
@@ -175,19 +174,6 @@ internal data class ModernCollectionRowBuildCacheEntry(
     val mappedRow: HeroCarouselRow
 )
 @Stable
-internal class ModernHomeUiCaches {
-    val focusedItemByRow = mutableMapOf<String, Int>()
-    val itemFocusRequesters = mutableMapOf<String, MutableMap<String, FocusRequester>>()
-    val rowListStates = mutableMapOf<String, LazyListState>()
-    val loadMoreRequestedTotals = mutableMapOf<String, Int>()
-
-    fun requesterFor(rowKey: String, itemKey: String): FocusRequester {
-        val byIndex = itemFocusRequesters.getOrPut(rowKey) { mutableMapOf() }
-        return byIndex.getOrPut(itemKey) { FocusRequester() }
-    }
-}
-
-@Stable
 class ModernCarouselRowBuildCache {
     var continueWatchingItems: List<ContinueWatchingItem> = emptyList()
     var continueWatchingTitle: String = ""
@@ -254,6 +240,31 @@ internal fun ModernCarouselItem.catalogCardMetrics(
     }
 }
 
+internal fun ModernCarouselItem.catalogCardRequestMetrics(
+    useLandscapePosters: Boolean,
+    portraitCardWidth: androidx.compose.ui.unit.Dp,
+    portraitCardHeight: androidx.compose.ui.unit.Dp,
+    landscapeCardWidth: androidx.compose.ui.unit.Dp,
+    landscapeCardHeight: androidx.compose.ui.unit.Dp,
+    expandEnabled: Boolean = false
+): ModernCatalogCardMetrics {
+    val base = catalogCardMetrics(
+        useLandscapePosters = useLandscapePosters,
+        portraitCardWidth = portraitCardWidth,
+        portraitCardHeight = portraitCardHeight,
+        landscapeCardWidth = landscapeCardWidth,
+        landscapeCardHeight = landscapeCardHeight
+    )
+    if (!expandEnabled) return base
+
+    val expandedWidth = if (useLandscapePosters && payload !is ModernPayload.CollectionFolder) {
+        base.width
+    } else {
+        base.height * (16f / 9f)
+    }
+    return base.copy(width = maxOf(base.width, expandedWidth))
+}
+
 
 internal fun buildContinueWatchingItem(
     item: ContinueWatchingItem,
@@ -315,7 +326,7 @@ internal fun buildContinueWatchingItem(
                 yearText = extractYearOrRange(item.releaseInfo),
                 secondaryHighlightText = secondaryHighlightText,
                 imdbText = item.episodeImdbRating?.let { String.format("%.1f", it) },
-                genres = item.genres,
+                genres = item.genres.asStable(),
                 poster = item.progress.poster,
                 backdrop = item.progress.backdrop,
                 imageUrl = if (useLandscapePosters) {
@@ -344,7 +355,7 @@ internal fun buildContinueWatchingItem(
                 yearText = extractYearOrRange(item.info.releaseInfo),
                 secondaryHighlightText = secondaryHighlightText,
                 imdbText = item.info.imdbRating?.let { String.format("%.1f", it) },
-                genres = item.info.genres,
+                genres = item.info.genres.asStable(),
                 poster = item.info.poster,
                 backdrop = item.info.backdrop,
                 imageUrl = if (useLandscapePosters) {
@@ -458,7 +469,7 @@ internal fun buildCatalogItem(
         statusText = item.status,
         countryText = item.country,
         languageText = item.language?.uppercase(),
-        genres = item.genres.take(3),
+        genres = item.genres.take(3).asStable(),
         poster = item.poster,
         backdrop = item.backdropUrl,
         imageUrl = if (useLandscapePosters) {
@@ -503,7 +514,10 @@ internal fun buildCollectionFolderItem(
     } else {
         folder.title
     }
-    val imageUrl = firstNonBlank(folder.coverImageUrl, collection.backdropImageUrl)
+    val hasEmoji = !folder.coverEmoji.isNullOrBlank()
+    // When folder uses emoji as cover, don't use any image for the card poster —
+    // emoji always takes priority as the visual cover.
+    val imageUrl = if (hasEmoji) null else firstNonBlank(folder.coverImageUrl, collection.backdropImageUrl)
     val heroBackdrop = firstNonBlank(folder.heroBackdropUrl, folder.coverImageUrl, collection.backdropImageUrl)
 
     return ModernCarouselItem(
@@ -518,7 +532,7 @@ internal fun buildCollectionFolderItem(
             contentTypeText = null,
             yearText = null,
             imdbText = null,
-            genres = emptyList(),
+            genres = emptyList<String>().asStable(),
             poster = imageUrl,
             backdrop = heroBackdrop,
             imageUrl = imageUrl
@@ -534,7 +548,8 @@ internal fun buildCollectionFolderItem(
             focusGifUrl = folder.focusGifUrl,
             heroBackdropUrl = folder.heroBackdropUrl,
             heroVideoUrl = folder.heroVideoUrl,
-            titleLogoUrl = folder.titleLogoUrl
+            titleLogoUrl = folder.titleLogoUrl,
+            coverEmoji = folder.coverEmoji
         )
     )
 }

@@ -88,7 +88,7 @@ fun TrailerPlayer(
                 .build()
             ExoPlayer.Builder(context)
                 .setLoadControl(loadControl)
-                .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
+                .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS)
                 .build()
                 .apply {
                     repeatMode = Player.REPEAT_MODE_OFF
@@ -122,8 +122,13 @@ fun TrailerPlayer(
             player.playWhenReady = true
         } else {
             hasRenderedFirstFrame = false
-            player.stop()
-            player.clearMediaItems()
+            player.playWhenReady = false
+            // Defer heavy stop and clear until focus settling/collapse has finished
+            delay(150)
+            if (!isPlaying) {
+                player.stop()
+                player.clearMediaItems()
+            }
         }
     }
 

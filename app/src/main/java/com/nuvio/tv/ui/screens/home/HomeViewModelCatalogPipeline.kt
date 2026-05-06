@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import com.nuvio.tv.domain.model.MetaPreview
 import kotlinx.coroutines.launch
@@ -98,6 +99,10 @@ internal fun HomeViewModel.observeTmdbSettingsPipeline() {
             .collectLatest { settings ->
                 val languageChanged = currentTmdbSettings.language != settings.language
                 currentTmdbSettings = settings
+                val tmdbEnabledForLayout = settings.enabled &&
+                    (_uiState.value.homeLayout != HomeLayout.MODERN || settings.modernHomeEnabled)
+                val enrichEnabled = tmdbEnabledForLayout || externalMetaPrefetchEnabled
+                _uiState.update { it.copy(heroEnrichmentEnabled = enrichEnabled) }
                 if (languageChanged) {
                     // Allow re-enrichment with the new language on next focus.
                     prefetchedTmdbIds.clear()
@@ -144,13 +149,13 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
     val isReload = _uiState.value.catalogRows.isNotEmpty() || _uiState.value.homeRows.isNotEmpty()
     if (!isReload) {
         _uiState.update { it.copy(isLoading = true, error = null, installedAddonsCount = addons.size) }
+        synchronized(catalogStateLock) {
+            catalogOrder.clear()
+        }
+        clearCatalogData()
     } else {
         _uiState.update { it.copy(error = null, installedAddonsCount = addons.size) }
     }
-    synchronized(catalogStateLock) {
-        catalogOrder.clear()
-    }
-    clearCatalogData()
     posterStatusReconcileJob?.cancel()
     reconcilePosterStatusObserversPipeline(emptyList())
     _fullCatalogRows.value = emptyList()
@@ -266,8 +271,15 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
         }
 
         // Determine which home catalogs to load eagerly vs lazily.
-        val eagerHomeCatalogs = catalogsToLoad.take(eagerCatalogLoadCount)
-        val lazyHomeCatalogs = catalogsToLoad.drop(eagerCatalogLoadCount)
+        // Grid layout loads all catalogs eagerly since it doesn't support
+        // placeholder shimmer rows — all content must be available upfront.
+        // Wait for layout preferences if not yet ready, to avoid wrong eager/lazy split.
+        if (!_uiState.value.layoutPreferencesReady) {
+            _uiState.first { it.layoutPreferencesReady }
+        }
+        val isGridLayout = _uiState.value.homeLayout == HomeLayout.GRID
+        val eagerHomeCatalogs = if (isGridLayout) catalogsToLoad else catalogsToLoad.take(eagerCatalogLoadCount)
+        val lazyHomeCatalogs = if (isGridLayout) emptyList() else catalogsToLoad.drop(eagerCatalogLoadCount)
 
         // Build placeholder descriptors for lazy catalogs
         synchronized(catalogStateLock) {
@@ -730,7 +742,9 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
                 when (homeRow) {
                     is HomeRow.Catalog -> {
                         val row = homeRow.row
-                        if (row.items.isNotEmpty()) {
+                        val isPlaceholderRow = row.isLoading &&
+                            row.items.firstOrNull()?.id?.startsWith("__placeholder_") == true
+                        if (row.items.isNotEmpty() && !isPlaceholderRow) {
                             add(GridItem.SectionDivider(
                                 catalogName = row.catalogName,
                                 catalogId = row.catalogId,
