@@ -110,6 +110,11 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
                     val isSongsAndSigns = trackTexts.any {
                         it.contains("songs", ignoreCase = true) && it.contains("sign", ignoreCase = true)
                     }
+                    val isCC = trackTexts.any {
+                        it.contains("cc", ignoreCase = true) ||
+                            it.contains("closed caption", ignoreCase = true) ||
+                            it.contains("sdh", ignoreCase = true)
+                    }
 
                     subtitleTracks.add(
                         TrackInfo(
@@ -119,6 +124,7 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
                             trackId = format.id,
                             codec = CustomDefaultTrackNameProvider.formatNameFromMime(format.sampleMimeType),
                             isForced = hasForcedFlag || nameHintForced || isSongsAndSigns,
+                            isCC = isCC,
                             isSelected = isSelected
                         )
                     )
@@ -1065,7 +1071,7 @@ internal fun PlayerRuntimeController.findBestInternalSubtitleTrackIndex(
             )
             if (tieBroken >= 0) return tieBroken
         }
-        return candidateIndexes.first()
+        return pickBestNonForcedPreferNonCC(candidateIndexes, subtitleTracks)
     }
     return -1
 }
@@ -1073,6 +1079,18 @@ internal fun PlayerRuntimeController.findBestInternalSubtitleTrackIndex(
 private fun findBestForcedSubtitleTrackIndex(subtitleTracks: List<TrackInfo>): Int {
     // isForced is set from both the ExoPlayer SELECTION_FLAG_FORCED and name/label/id containing "forced"
     return subtitleTracks.indexOfFirst { it.isForced }
+}
+
+private fun pickBestNonForcedPreferNonCC(
+    candidateIndexes: List<Int>,
+    subtitleTracks: List<TrackInfo>
+): Int {
+    // Prefer non-forced, non-CC (normal subtitles)
+    candidateIndexes.firstOrNull { !subtitleTracks[it].isForced && !subtitleTracks[it].isCC }?.let { return it }
+    // Then non-forced, CC
+    candidateIndexes.firstOrNull { !subtitleTracks[it].isForced && subtitleTracks[it].isCC }?.let { return it }
+    // Fallback to first available
+    return candidateIndexes.first()
 }
 
 internal fun PlayerRuntimeController.findBrazilianPortugueseInGenericPtTracks(
@@ -1084,12 +1102,19 @@ internal fun PlayerRuntimeController.findBrazilianPortugueseInGenericPtTracks(
     }
     if (genericPtIndexes.isEmpty()) return -1
 
-    val brazilianNonForced = genericPtIndexes.filter { index ->
-        !subtitleTracks[index].isForced &&
+    val brazilianNonForcedNonCC = genericPtIndexes.filter { index ->
+        !subtitleTracks[index].isForced && !subtitleTracks[index].isCC &&
             subtitleHasAnyTag(subtitleTracks[index], PlayerSubtitleUtils.BRAZILIAN_TAGS) &&
             !subtitleHasAnyTag(subtitleTracks[index], PlayerSubtitleUtils.EUROPEAN_PT_TAGS)
     }
-    if (brazilianNonForced.isNotEmpty()) return brazilianNonForced.first()
+    if (brazilianNonForcedNonCC.isNotEmpty()) return brazilianNonForcedNonCC.first()
+
+    val brazilianNonForcedCC = genericPtIndexes.filter { index ->
+        !subtitleTracks[index].isForced && subtitleTracks[index].isCC &&
+            subtitleHasAnyTag(subtitleTracks[index], PlayerSubtitleUtils.BRAZILIAN_TAGS) &&
+            !subtitleHasAnyTag(subtitleTracks[index], PlayerSubtitleUtils.EUROPEAN_PT_TAGS)
+    }
+    if (brazilianNonForcedCC.isNotEmpty()) return brazilianNonForcedCC.first()
 
     return genericPtIndexes.firstOrNull { index ->
         subtitleHasAnyTag(subtitleTracks[index], PlayerSubtitleUtils.BRAZILIAN_TAGS) &&
@@ -1115,12 +1140,12 @@ internal fun PlayerRuntimeController.breakPortugueseSubtitleTie(
     return if (normalizedTarget == "pt-br") {
         candidateIndexes.firstOrNull { hasBrazilianTags(it) && !hasEuropeanTags(it) }
             ?: candidateIndexes.firstOrNull { hasBrazilianTags(it) }
-            ?: candidateIndexes.first()
+            ?: pickBestNonForcedPreferNonCC(candidateIndexes, subtitleTracks)
     } else {
         candidateIndexes.firstOrNull { hasEuropeanTags(it) && !hasBrazilianTags(it) }
             ?: candidateIndexes.firstOrNull { hasEuropeanTags(it) }
             ?: candidateIndexes.firstOrNull { !hasBrazilianTags(it) }
-            ?: candidateIndexes.first()
+            ?: pickBestNonForcedPreferNonCC(candidateIndexes, subtitleTracks)
     }
 }
 
@@ -1133,12 +1158,19 @@ internal fun PlayerRuntimeController.findLatinoSpanishInGenericEsTracks(
     }
     if (genericEsIndexes.isEmpty()) return -1
 
-    val latinoNonForced = genericEsIndexes.filter { index ->
-        !subtitleTracks[index].isForced &&
+    val latinoNonForcedNonCC = genericEsIndexes.filter { index ->
+        !subtitleTracks[index].isForced && !subtitleTracks[index].isCC &&
             subtitleHasAnyTag(subtitleTracks[index], PlayerSubtitleUtils.LATINO_TAGS) &&
             !subtitleHasAnyTag(subtitleTracks[index], PlayerSubtitleUtils.CASTILIAN_TAGS)
     }
-    if (latinoNonForced.isNotEmpty()) return latinoNonForced.first()
+    if (latinoNonForcedNonCC.isNotEmpty()) return latinoNonForcedNonCC.first()
+
+    val latinoNonForcedCC = genericEsIndexes.filter { index ->
+        !subtitleTracks[index].isForced && subtitleTracks[index].isCC &&
+            subtitleHasAnyTag(subtitleTracks[index], PlayerSubtitleUtils.LATINO_TAGS) &&
+            !subtitleHasAnyTag(subtitleTracks[index], PlayerSubtitleUtils.CASTILIAN_TAGS)
+    }
+    if (latinoNonForcedCC.isNotEmpty()) return latinoNonForcedCC.first()
 
     return genericEsIndexes.firstOrNull { index ->
         subtitleHasAnyTag(subtitleTracks[index], PlayerSubtitleUtils.LATINO_TAGS) &&
@@ -1164,12 +1196,12 @@ internal fun PlayerRuntimeController.breakSpanishSubtitleTie(
     return if (normalizedTarget == "es-419") {
         candidateIndexes.firstOrNull { hasLatinoTags(it) && !hasCastilianTags(it) }
             ?: candidateIndexes.firstOrNull { hasLatinoTags(it) }
-            ?: candidateIndexes.first()
+            ?: pickBestNonForcedPreferNonCC(candidateIndexes, subtitleTracks)
     } else {
         candidateIndexes.firstOrNull { hasCastilianTags(it) && !hasLatinoTags(it) }
             ?: candidateIndexes.firstOrNull { hasCastilianTags(it) }
             ?: candidateIndexes.firstOrNull { !hasLatinoTags(it) }
-            ?: candidateIndexes.first()
+            ?: pickBestNonForcedPreferNonCC(candidateIndexes, subtitleTracks)
     }
 }
 

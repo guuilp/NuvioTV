@@ -174,6 +174,7 @@ data class TrackInfo(
     val codec: String? = null,
     val channelCount: Int? = null,
     val isForced: Boolean = false,
+    val isCC: Boolean = false,
     val isSelected: Boolean = false,
     val sampleRate: Int? = null
 )

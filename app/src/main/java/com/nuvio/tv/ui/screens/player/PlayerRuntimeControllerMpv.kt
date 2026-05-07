@@ -47,6 +47,9 @@ internal fun PlayerRuntimeController.attachMpvView(view: NuvioMpvSurfaceView?) {
         startProgressUpdates()
         startWatchProgressSaving()
         updateMpvAvailableTracks()
+        if (_uiState.value.subtitleTracks.isNotEmpty() && _uiState.value.selectedAddonSubtitle != null) {
+            autoSubtitleSelected = false
+        }
         tryAutoSelectPreferredSubtitleFromAvailableTracks()
         scheduleHideControls()
         emitScrobbleStart()
@@ -131,6 +134,9 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
         startProgressUpdates()
         startWatchProgressSaving()
         updateMpvAvailableTracks()
+        if (_uiState.value.subtitleTracks.isNotEmpty() && _uiState.value.selectedAddonSubtitle != null) {
+            autoSubtitleSelected = false
+        }
         tryAutoSelectPreferredSubtitleFromAvailableTracks()
         scheduleHideControls()
         emitScrobbleStart()
@@ -218,6 +224,7 @@ internal fun PlayerRuntimeController.updateMpvAvailableTracks() {
                 trackId = track.id.toString(),
                 codec = track.codec,
                 isForced = track.isForced,
+                isCC = track.isCC,
                 isSelected = track.isSelected
             )
         }

@@ -395,6 +395,11 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
             val forced = (mpv.getPropertyBoolean("track-list/$i/forced") == true) || listOfNotNull(title, language).any {
                 it.contains("forced", ignoreCase = true)
             }
+            val cc = listOfNotNull(title, language).any {
+                it.contains("cc", ignoreCase = true) ||
+                    it.contains("closed caption", ignoreCase = true) ||
+                    it.contains("sdh", ignoreCase = true)
+            }
             val selected = when (type) {
                 "audio" -> (selectedAudioTrackId != null && selectedAudioTrackId == id) || selectedByFlag
                 "sub" -> (selectedSubtitleTrackId != null && selectedSubtitleTrackId == id) || selectedByFlag
@@ -412,6 +417,7 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
                         channelCount = channelCount,
                         isSelected = selected,
                         isForced = false,
+                        isCC = false,
                         isExternal = external
                     )
                 }
@@ -426,6 +432,7 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
                         channelCount = null,
                         isSelected = selected,
                         isForced = forced,
+                        isCC = cc,
                         isExternal = external
                     )
                 }
@@ -584,5 +591,6 @@ data class MpvTrack(
     val channelCount: Int?,
     val isSelected: Boolean,
     val isForced: Boolean,
+    val isCC: Boolean,
     val isExternal: Boolean
 )
