@@ -81,7 +81,7 @@ class TraktProgressService @Inject constructor(
     companion object {
         private const val TAG = "TraktProgressSvc"
         private val MAPPING_CONCURRENCY =
-            maxOf(2, minOf(Runtime.getRuntime().availableProcessors() * 2, 16))
+            maxOf(2, minOf(Runtime.getRuntime().availableProcessors() * 3, 16))
     }
 
     private fun trace(message: String) {
@@ -1646,7 +1646,7 @@ class TraktProgressService @Inject constructor(
             }
             val episodesDeferred = async {
                 val playback = getPlayback("episodes", force = force, startAt = playbackStartAt)
-                
+
                 playback.map { item ->
                     async {
                         mappingSemaphore.withPermit { mapPlaybackEpisode(item, applyAddonRemap = true) }
@@ -1759,9 +1759,12 @@ class TraktProgressService @Inject constructor(
                 val uniqueShowIds = candidateItems
                     .mapNotNull { normalizeContentId(it.show?.ids).takeIf { id -> id.isNotBlank() } }
                     .distinct()
+                val prefetchT0 = SystemClock.elapsedRealtime()
                 traktEpisodeMappingService.prefetchAddonEpisodes(uniqueShowIds, concurrency = MAPPING_CONCURRENCY)
+                trace("prefetchAddonEpisodes ${uniqueShowIds.size} shows in ${SystemClock.elapsedRealtime() - prefetchT0}ms (concurrency=$MAPPING_CONCURRENCY)")
 
                 // Map candidates in parallel to speed up videoId resolution.
+                val mapT0 = SystemClock.elapsedRealtime()
                 val mapped = coroutineScope {
                     candidateItems.map { item ->
                         async {
@@ -1771,6 +1774,7 @@ class TraktProgressService @Inject constructor(
                         }
                     }.awaitAll()
                 }
+                trace("mapping ${candidateItems.size} items in ${SystemClock.elapsedRealtime() - mapT0}ms (concurrency=$MAPPING_CONCURRENCY)")
                 mapped.filterNotNull().forEach { progress ->
                     results.putIfAbsent(progress.contentId, progress)
                 }
