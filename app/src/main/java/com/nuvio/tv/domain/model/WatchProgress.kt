@@ -63,7 +63,10 @@ data class WatchProgress(
      * Returns the remaining time in milliseconds
      */
     val remainingTime: Long
-        get() = (duration - position).coerceAtLeast(0)
+        get() {
+            if (duration <= 0) return 0L
+            return (duration * (1f - progressPercentage)).toLong().coerceAtLeast(0)
+        }
 
     fun resolveResumePosition(actualDuration: Long): Long {
         if (actualDuration <= 0) return position.coerceAtLeast(0L)
