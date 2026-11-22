@@ -7,6 +7,7 @@ import android.widget.Toast
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.NuvioMotion
+import com.nuvio.tv.ui.navigation.LocalNavAnimatedVisibilityScope
 import com.nuvio.tv.ui.navigation.normalizedImageUrl
 import com.nuvio.tv.ui.navigation.sharedDetailHeroBackdropDestination
 import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
@@ -2261,6 +2262,10 @@ private fun MetaDetailsContent(
         with(localDensity) { screenHeightDp.roundToPx() }
     }
     val hasHeroBackdrop = !heroBackdropUrl.isNullOrBlank()
+    val navAnimatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
+    val isNavTransitionActive = navAnimatedVisibilityScope?.transition?.let {
+        it.currentState != it.targetState
+    } ?: false
     val seedBackdropUrl = heroBackdropUrl?.takeIf { it.isNotBlank() }
     val backdropDataUrl = meta.backdropUrl ?: meta.poster
     val shouldReuseSeedBackdrop = seedBackdropUrl != null &&
@@ -2286,18 +2291,20 @@ private fun MetaDetailsContent(
         shouldReuseSeedBackdrop,
         hasHeroBackdrop,
         heroBackdropRequest,
+        isNavTransitionActive,
         backdropWidthPx,
         backdropHeightPx
     ) {
-        if (shouldReuseSeedBackdrop && heroBackdropRequest != null) {
-            heroBackdropRequest
-        } else {
-            ImageRequest.Builder(localContext)
+        when {
+            // Exact same asset (possibly different TMDB size): one image, no swap ever needed.
+            shouldReuseSeedBackdrop && heroBackdropRequest != null -> heroBackdropRequest
+            // While the home→detail (or detail→home) morph is running, render only the handoff
+            // image so the user sees one continuous visual. The meta backdrop is loaded after
+            // the transition settles and crossfades in as a normal content refresh.
+            isNavTransitionActive && hasHeroBackdrop && heroBackdropRequest != null -> heroBackdropRequest
+            else -> ImageRequest.Builder(localContext)
                 .data(backdropDataUrl)
-                // While a handoff image is on screen we don't want the meta backdrop's own
-                // crossfade fighting the nav morph. Hard-cut once it loads; the seed keeps the
-                // screen filled until then.
-                .apply { if (hasHeroBackdrop) crossfade(false) else crossfade(400) }
+                .crossfade(400)
                 .size(width = backdropWidthPx, height = backdropHeightPx)
                 .build()
         }
@@ -2407,7 +2414,13 @@ private fun MetaDetailsContent(
         ) {
             BackdropLayer(
                 backdropRequest = backdropRequest,
-                heroBackdropRequest = if (shouldShowSeedBackdropUnderlay) heroBackdropRequest else null,
+                heroBackdropRequest = if (isNavTransitionActive && hasHeroBackdrop && !shouldReuseSeedBackdrop) {
+                    null
+                } else if (shouldShowSeedBackdropUnderlay) {
+                    heroBackdropRequest
+                } else {
+                    null
+                },
                 trailerUrl = trailerUrl,
                 trailerAudioUrl = trailerAudioUrl,
                 isTrailerPlaying = isTrailerPlaying,
