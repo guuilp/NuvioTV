@@ -136,7 +136,10 @@ internal fun DetailChildHost(
                     .background(NuvioTheme.colors.Background)
             )
         }
-        CompositionLocalProvider(LocalDetailChildOverlayVisible provides false) {
+        CompositionLocalProvider(
+            LocalDetailChildOverlayVisible provides false,
+            LocalNavAnimatedVisibilityScope provides null
+        ) {
             NavHost(
                 navController = childNav,
                 startDestination = DETAIL_CHILD_IDLE,
@@ -235,6 +238,7 @@ internal fun DetailChildHost(
                     MetaDetailsScreen(
                         viewModel = hiltViewModel(nestedEntry),
                         heroBackdropUrl = nestedArgs?.getString("heroBackdropUrl")?.takeIf { it.isNotBlank() },
+                        sharedElementItemId = nestedArgs?.getString("itemId"),
                         playOnLoad = nestedArgs?.getString("playOnLoad")?.toBooleanStrictOrNull() == true,
                         playOnLoadManually = nestedArgs?.getString("manualSelection")?.toBooleanStrictOrNull() == true,
                         onBackPress = { childNav.popBackStack() },

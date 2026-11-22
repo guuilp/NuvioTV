@@ -79,6 +79,7 @@ import com.nuvio.tv.ui.util.contentTextDirection
 import com.nuvio.tv.ui.util.formatHeroRuntime
 import com.nuvio.tv.ui.util.LocalRecompositionHighlighterEnabled
 import com.nuvio.tv.ui.util.localizedContentType
+import com.nuvio.tv.ui.navigation.sharedDetailHero
 import com.nuvio.tv.ui.util.localizedGenreLabel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -318,7 +319,9 @@ private fun HeroCarouselSlide(
             HeroCarouselBackdrop(
                 item = item,
                 fullPage = false,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .sharedDetailHero(item.id)
             )
         }
 

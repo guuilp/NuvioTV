@@ -7,6 +7,7 @@ import android.widget.Toast
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.NuvioMotion
+import com.nuvio.tv.ui.navigation.sharedDetailHero
 
 import android.view.KeyEvent
 import android.os.SystemClock
@@ -409,6 +410,7 @@ fun MetaDetailsScreen(
     returnFocusEpisode: Int? = null,
     heroRestoreToken: Int = 0,
     heroBackdropUrl: String? = null,
+    sharedElementItemId: String? = null,
     playOnLoad: Boolean = false,
     playOnLoadManually: Boolean = false,
     onBackPress: () -> Unit,
@@ -912,6 +914,7 @@ fun MetaDetailsScreen(
                         alpha = playOnLoadReturnContentAlpha
                     },
                     heroBackdropUrl = heroBackdropUrl,
+                    sharedElementItemId = sharedElementItemId,
                     meta = meta,
                     detailReturnEpisodeFocusRequest = DetailReturnEpisodeFocusRequest(
                         season = returnFocusSeason,
@@ -1259,6 +1262,7 @@ fun MetaDetailsScreen(
 private fun MetaDetailsContent(
     modifier: Modifier = Modifier,
     heroBackdropUrl: String? = null,
+    sharedElementItemId: String? = null,
     meta: Meta,
     detailReturnEpisodeFocusRequest: DetailReturnEpisodeFocusRequest? = null,
     onDetailReturnEpisodeFocusConsumed: () -> Unit,
@@ -2374,9 +2378,11 @@ private fun MetaDetailsContent(
     // Always-composed bottom gradient alpha (avoids add/remove during scroll)
 
     val contentBackgroundTrailerController = LocalBackgroundTrailerController.current
+    val heroSharedElementKey = sharedElementItemId ?: meta.id
     Box(
         modifier = modifier
             .fillMaxSize()
+            .sharedDetailHero(heroSharedElementKey)
             .drawBehind {
                 val ownTrailerRendering = (isTrailerPlaying || isBackgroundTrailerPlaying) &&
                     contentBackgroundTrailerController?.isRendering(trailerUrl) == true
