@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
 import android.util.Log
+import com.nuvio.tv.R
 import com.nuvio.tv.core.player.OpenSubtitlesHasher
 import androidx.media3.common.C
 import androidx.media3.common.Player
@@ -805,6 +806,9 @@ internal fun PlayerRuntimeController.retryCurrentStreamWithAudioDisabled(fromPos
 }
 
 internal fun PlayerRuntimeController.retryCurrentStreamWithDolbyVisionFallback(fromPositionMs: Long) {
+    // Player recovery UX: the DV path that cannot decode drops to the HEVC/HDR10 base layer;
+    // say so instead of degrading silently.
+    showRecoveryNotice(context.getString(R.string.player_loading_fallback_hevc_decoder))
     scheduleDeferredPlayerReinitialize(fromPositionMs = fromPositionMs, clearResumeProgress = true)
 }
 

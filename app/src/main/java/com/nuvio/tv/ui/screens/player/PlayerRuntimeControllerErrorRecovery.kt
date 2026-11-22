@@ -29,6 +29,19 @@ internal fun PlayerRuntimeController.showRecoveryOverlay() {
     }
 }
 
+/**
+ * Player recovery UX: explains a silent fallback (PCM audio, HEVC decoder) through the
+ * same transient top-center indicator used for source-switch notices, with its auto-hide.
+ */
+internal fun PlayerRuntimeController.showRecoveryNotice(text: String) {
+    hideStreamSourceIndicatorJob?.cancel()
+    _uiState.update { it.copy(showStreamSourceIndicator = true, streamSourceIndicatorText = text) }
+    hideStreamSourceIndicatorJob = scope.launch {
+        delay(2200)
+        _uiState.update { it.copy(showStreamSourceIndicator = false) }
+    }
+}
+
 internal fun PlayerRuntimeController.attemptStartupRecovery(
     error: PlaybackException,
     detailedError: String
@@ -272,7 +285,9 @@ internal fun PlayerRuntimeController.attemptAutoRetry(
         _uiState.update {
             it.copy(
                 error = null,
-                showLoadingOverlay = if (isFirstAttempt) false else it.loadingOverlayEnabled,
+                // Player recovery UX: keep the loading overlay on the first retry too, so the
+                // recovery never looks like a frozen black screen.
+                showLoadingOverlay = it.loadingOverlayEnabled,
                 showPauseOverlay = false
             )
         }
@@ -383,6 +398,8 @@ internal fun PlayerRuntimeController.tryAudioTrackPcmFallback(
 
     Log.d(PlayerRuntimeController.TAG, "Audio track init failed (5001) — rebuilding player with PCM forcing, position=${savedPosition}ms")
     showRecoveryOverlay()
+    // Player recovery UX: tell the user the audio failure is being worked around, not ignored.
+    showRecoveryNotice(context.getString(R.string.player_loading_fallback_pcm_audio))
 
     errorRetryJob?.cancel()
     errorRetryJob = scope.launch {
@@ -414,6 +431,8 @@ internal fun PlayerRuntimeController.tryNextAudioFallbackStep(positionMs: Long):
         PlayerAudioFallbackPolicy.Step.FORCE_PCM -> {
             hasTriedAudioPcmFallback = true
             pendingAudioPcmFallbackRebuild = true
+            // Player recovery UX: surface the PCM downmix fallback instead of failing silently.
+            showRecoveryNotice(context.getString(R.string.player_loading_fallback_pcm_audio))
             retryCurrentStreamWithSafeAudioFallback(positionMs)
         }
         PlayerAudioFallbackPolicy.Step.DISABLE_AUDIO -> {
@@ -463,6 +482,8 @@ internal fun PlayerRuntimeController.tryDv7HevcFallback(
     // Show loading overlay with fallback info instead of error screen.
     errorRetryJob = scope.launch {
         showRecoveryOverlay()
+        // Player recovery UX: identify the decoder fallback instead of degrading silently.
+        showRecoveryNotice(context.getString(R.string.player_loading_fallback_hevc_decoder))
 
         releasePlayer(flushPlaybackState = false)
         if (savedPosition > 0L) {
