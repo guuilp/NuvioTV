@@ -101,23 +101,18 @@ private fun routePair(from: String, to: String): RoutePair = when {
     else -> RoutePair.Other
 }
 
-// Home -> Detail: the pressed card expands into the detail page.
+// Home -> Detail: let the shared elements carry the motion. The home screen stays
+// put, while the detail screen's non-shared content fades in quickly.
 private fun homeToDetailEnter(): EnterTransition =
-    fadeIn(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.emphasized)) +
-        scaleIn(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.emphasized), initialScale = 0.94f)
+    fadeIn(tween(NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard))
 
-private fun homeToDetailExit(): ExitTransition =
-    scaleOut(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.standard), targetScale = 0.97f) +
-        fadeOut(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.standard))
+private fun homeToDetailExit(): ExitTransition = ExitTransition.None
 
-// Detail -> Home (pop): the detail page recedes and the home screen returns to full size.
+// Detail -> Home (pop): reverse — the detail screen stays put while home fades back in.
 private fun detailToHomePopEnter(): EnterTransition =
-    fadeIn(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.decelerate)) +
-        scaleIn(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.decelerate), initialScale = 0.97f)
+    fadeIn(tween(NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard))
 
-private fun detailToHomePopExit(): ExitTransition =
-    scaleOut(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.decelerate), targetScale = 0.96f) +
-        fadeOut(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.decelerate))
+private fun detailToHomePopExit(): ExitTransition = ExitTransition.None
 
 // Forward step into playback surfaces: brief scale-up + quick fade.
 private fun forwardStepEnter(duration: Int): EnterTransition =
@@ -394,7 +389,7 @@ private fun PlaybackNavHost(
 
             HomeScreen(
                 onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
-                    val heroBackdrop = HeroBackdropState.consumeAndClear()
+                    val heroBackdrop = HeroBackdropState.currentHeroBackdropUrl
                     navController.navigate(
                         Screen.Detail.createRoute(
                             itemId = itemId,

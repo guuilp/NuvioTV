@@ -7,7 +7,8 @@ import android.widget.Toast
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.NuvioMotion
-import com.nuvio.tv.ui.navigation.sharedDetailHero
+import com.nuvio.tv.ui.navigation.sharedDetailHeroBackdropDestination
+import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
 
 import android.view.KeyEvent
 import android.os.SystemClock
@@ -2382,7 +2383,11 @@ private fun MetaDetailsContent(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .sharedDetailHero(heroSharedElementKey)
+            .sharedDetailHeroBackdropDestination(
+                itemId = heroSharedElementKey,
+                heroBackdropUrl = heroBackdropUrl,
+                detailBackdropUrl = meta.backdropUrl ?: meta.poster
+            )
             .drawBehind {
                 val ownTrailerRendering = (isTrailerPlaying || isBackgroundTrailerPlaying) &&
                     contentBackgroundTrailerController?.isRendering(trailerUrl) == true
@@ -2608,6 +2613,7 @@ private fun MetaDetailsContent(
                         randomEpisodeFocusRequester = randomEpisodeFocusRequester,
                         hideLogoDuringTrailer = hideLogoDuringTrailer,
                         isTrailerPlaying = isTrailerPlaying,
+                        logoSharedElementKey = sharedElementItemId ?: meta.id,
                         playButtonFocusRequester = heroPlayButtonFocusRequester,
                         onHeroActionFocused = {
                             if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {

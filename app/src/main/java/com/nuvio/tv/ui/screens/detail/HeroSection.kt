@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.detail
 
 import com.nuvio.tv.ui.theme.NuvioMotion
+import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
 
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.AnimatedVisibility
@@ -130,6 +131,7 @@ fun HeroContentSection(
     isTrailerPlaying: Boolean = false,
     playButtonFocusRequester: FocusRequester? = null,
     restorePlayFocusToken: Int = 0,
+    logoSharedElementKey: String? = null,
     onHeroActionFocused: () -> Unit = {},
     onPlayFocusRestored: () -> Unit = {},
     onShowFullDescription: () -> Unit = {},
@@ -217,7 +219,17 @@ fun HeroContentSection(
                     modifier = Modifier
                         .height(logoHeight)
                         .fillMaxWidth(logoMaxWidth)
-                        .padding(bottom = logoBottomPadding),
+                        .padding(bottom = logoBottomPadding)
+                        .then(
+                            if (logoSharedElementKey != null) {
+                                Modifier.sharedDetailHeroLogo(
+                                    itemId = logoSharedElementKey,
+                                    logoUrl = meta.logo
+                                )
+                            } else {
+                                Modifier
+                            }
+                        ),
                     contentScale = ContentScale.Fit,
                     alignment = Alignment.CenterStart
                 )
