@@ -322,7 +322,6 @@ fun ContentCard(
                     if (!imageUrl.isNullOrBlank() && imageUrl != PLACEHOLDER_IMAGE_URL) {
                         HeroBackdropState.update(imageUrl)
                     }
-                    HeroBackdropState.updateLogo(item.logo)
                     onClick()
                 }
             },
@@ -437,7 +436,7 @@ fun ContentCard(
                         contentDescription = item.name,
                         modifier = Modifier
                             .fillMaxSize()
-                            .sharedDetailHeroBackdropSource(item.id, sourceImageUrl = imageUrl),
+                            .sharedDetailHeroBackdropSource(item.id),
                         placeholder = backgroundPainter,
                         error = backgroundPainter,
                         fallback = backgroundPainter,

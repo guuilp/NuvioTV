@@ -114,7 +114,6 @@ fun HeroCarousel(
     val currentOnActiveItemChanged by rememberUpdatedState(onActiveItemChanged)
     fun performItemClick(item: MetaPreview) {
         HeroBackdropState.update(item.backdropUrl)
-        HeroBackdropState.updateLogo(item.logo)
         currentOnItemClick(item)
     }
     var activeIndex by remember { mutableIntStateOf(initialActiveIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) }
@@ -328,7 +327,7 @@ private fun HeroCarouselSlide(
                 fullPage = false,
                 modifier = Modifier
                     .fillMaxSize()
-                    .sharedDetailHeroBackdropSource(item.id, sourceImageUrl = item.backdropUrl)
+                    .sharedDetailHeroBackdropSource(item.id)
             )
         }
 

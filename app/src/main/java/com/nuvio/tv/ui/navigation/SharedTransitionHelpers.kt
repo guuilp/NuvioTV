@@ -10,8 +10,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.platform.LocalContext
-import com.nuvio.tv.ui.screens.home.HeroBackdropState
-import com.nuvio.tv.ui.screens.home.normalizedImageUrl
 import com.nuvio.tv.ui.theme.NuvioMotion
 
 /**
@@ -50,22 +48,13 @@ private fun rememberSharedElementEnabled(): Boolean {
 /**
  * Source-side artwork shared element.
  *
- * Only marks the artwork when the image this composable is currently showing matches the URL
- * that will be handed to the detail screen as [heroBackdropUrl]. This avoids a crossfade/fight
- * when the card shows a portrait poster but the detail hero is a wide backdrop.
+ * Registers unconditionally (when the scope is available and reduced motion is off). The key is
+ * per-item, so only the clicked card's artwork can pair with the destination. This avoids the
+ * race-prone URL comparison against a click-time volatile and lets size variants morph as long as
+ * the destination renders the handoff image under the transition.
  */
-fun Modifier.sharedDetailHeroBackdropSource(
-    itemId: String,
-    sourceImageUrl: String?
-): Modifier = composed {
+fun Modifier.sharedDetailHeroBackdropSource(itemId: String): Modifier = composed {
     if (!rememberSharedElementEnabled()) return@composed this
-    val handoffBackdropUrl = HeroBackdropState.currentHeroBackdropUrl
-    if (sourceImageUrl.isNullOrBlank() ||
-        handoffBackdropUrl.isNullOrBlank() ||
-        sourceImageUrl.normalizedImageUrl() != handoffBackdropUrl.normalizedImageUrl()
-    ) {
-        return@composed this
-    }
     val sharedScope = LocalSharedTransitionScope.current!!
     val navScope = LocalNavAnimatedVisibilityScope.current!!
     with(sharedScope) {
@@ -85,21 +74,16 @@ fun Modifier.sharedDetailHeroBackdropSource(
 /**
  * Destination-side artwork shared element.
  *
- * The detail applies this only when the incoming [heroBackdropUrl] (the image the home side was
- * showing) is the same URL the detail will display as its hero backdrop.
+ * Registers only when a handoff backdrop URL was supplied by the source screen. The detail's seed
+ * underlay renders that exact image, so source and destination are visually identical even when
+ * the loaded meta's own backdrop URL uses a different TMDB size variant.
  */
 fun Modifier.sharedDetailHeroBackdropDestination(
     itemId: String,
-    heroBackdropUrl: String?,
-    detailBackdropUrl: String?
+    heroBackdropUrl: String?
 ): Modifier = composed {
     if (!rememberSharedElementEnabled()) return@composed this
-    if (heroBackdropUrl.isNullOrBlank() ||
-        detailBackdropUrl.isNullOrBlank() ||
-        heroBackdropUrl.normalizedImageUrl() != detailBackdropUrl.normalizedImageUrl()
-    ) {
-        return@composed this
-    }
+    if (heroBackdropUrl.isNullOrBlank()) return@composed this
     val sharedScope = LocalSharedTransitionScope.current!!
     val navScope = LocalNavAnimatedVisibilityScope.current!!
     with(sharedScope) {
@@ -119,21 +103,15 @@ fun Modifier.sharedDetailHeroBackdropDestination(
 /**
  * Logo shared element.
  *
- * Applied on both sides only when that side renders a logo image ([logoUrl] non-blank). If either
- * side falls back to styled text, no match occurs and the logo rides the route fade instead.
+ * Registers when this composable actually renders a logo image. If either side falls back to styled
+ * text, no match occurs and the logo rides the route fade instead.
  */
 fun Modifier.sharedDetailHeroLogo(
     itemId: String,
     logoUrl: String?
 ): Modifier = composed {
     if (!rememberSharedElementEnabled()) return@composed this
-    val handoffLogoUrl = HeroBackdropState.currentHeroLogoUrl
-    if (logoUrl.isNullOrBlank() ||
-        handoffLogoUrl.isNullOrBlank() ||
-        logoUrl.normalizedImageUrl() != handoffLogoUrl
-    ) {
-        return@composed this
-    }
+    if (logoUrl.isNullOrBlank()) return@composed this
     val sharedScope = LocalSharedTransitionScope.current!!
     val navScope = LocalNavAnimatedVisibilityScope.current!!
     with(sharedScope) {

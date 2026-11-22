@@ -134,7 +134,6 @@ fun GridContentCard(
                     if (!effectiveImageUrl.isNullOrBlank()) {
                         HeroBackdropState.update(effectiveImageUrl)
                     }
-                    HeroBackdropState.updateLogo(item.logo)
                     onClick()
                 }
             },
@@ -246,7 +245,7 @@ fun GridContentCard(
                         contentDescription = item.name,
                         modifier = Modifier
                             .fillMaxSize()
-                            .sharedDetailHeroBackdropSource(item.id, sourceImageUrl = effectiveImageUrl),
+                            .sharedDetailHeroBackdropSource(item.id),
                         contentScale = ContentScale.Crop,
                         placeholder = bgPainter,
                         error = bgPainter,

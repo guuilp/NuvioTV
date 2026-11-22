@@ -2385,8 +2385,7 @@ private fun MetaDetailsContent(
             .fillMaxSize()
             .sharedDetailHeroBackdropDestination(
                 itemId = heroSharedElementKey,
-                heroBackdropUrl = heroBackdropUrl,
-                detailBackdropUrl = meta.backdropUrl ?: meta.poster
+                heroBackdropUrl = heroBackdropUrl
             )
             .drawBehind {
                 val ownTrailerRendering = (isTrailerPlaying || isBackgroundTrailerPlaying) &&
