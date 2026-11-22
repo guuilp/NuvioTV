@@ -7,6 +7,7 @@ import android.widget.Toast
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.NuvioMotion
+import com.nuvio.tv.ui.navigation.normalizedImageUrl
 import com.nuvio.tv.ui.navigation.sharedDetailHeroBackdropDestination
 import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
 
@@ -2262,7 +2263,8 @@ private fun MetaDetailsContent(
     val hasHeroBackdrop = !heroBackdropUrl.isNullOrBlank()
     val seedBackdropUrl = heroBackdropUrl?.takeIf { it.isNotBlank() }
     val backdropDataUrl = meta.backdropUrl ?: meta.poster
-    val shouldReuseSeedBackdrop = seedBackdropUrl != null && seedBackdropUrl == backdropDataUrl
+    val shouldReuseSeedBackdrop = seedBackdropUrl != null &&
+        seedBackdropUrl.normalizedImageUrl() == backdropDataUrl?.normalizedImageUrl()
     val shouldShowSeedBackdropUnderlay = seedBackdropUrl != null && !shouldReuseSeedBackdrop
     val heroBackdropRequest = remember(
         localContext,
@@ -2292,7 +2294,10 @@ private fun MetaDetailsContent(
         } else {
             ImageRequest.Builder(localContext)
                 .data(backdropDataUrl)
-                .apply { if (shouldShowSeedBackdropUnderlay) crossfade(400) else if (hasHeroBackdrop) crossfade(false) else crossfade(400) }
+                // While a handoff image is on screen we don't want the meta backdrop's own
+                // crossfade fighting the nav morph. Hard-cut once it loads; the seed keeps the
+                // screen filled until then.
+                .apply { if (hasHeroBackdrop) crossfade(false) else crossfade(400) }
                 .size(width = backdropWidthPx, height = backdropHeightPx)
                 .build()
         }
@@ -2383,10 +2388,6 @@ private fun MetaDetailsContent(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .sharedDetailHeroBackdropDestination(
-                itemId = heroSharedElementKey,
-                heroBackdropUrl = heroBackdropUrl
-            )
             .drawBehind {
                 val ownTrailerRendering = (isTrailerPlaying || isBackgroundTrailerPlaying) &&
                     contentBackgroundTrailerController?.isRendering(trailerUrl) == true
@@ -2394,26 +2395,36 @@ private fun MetaDetailsContent(
             }
             .onPreviewKeyEvent { randomEpisodePlaybackPending }
     ) {
-        // Sticky background — backdrop or trailer
-        BackdropLayer(
-            backdropRequest = backdropRequest,
-            heroBackdropRequest = if (shouldShowSeedBackdropUnderlay) heroBackdropRequest else null,
-            trailerUrl = trailerUrl,
-            trailerAudioUrl = trailerAudioUrl,
-            isTrailerPlaying = isTrailerPlaying,
-            isBackgroundTrailerPlaying = isBackgroundTrailerPlaying,
-            pauseBackgroundTrailerOnScroll = pauseBackgroundTrailerOnScroll,
-            isTrailerPaused = isTrailerPaused,
-            showTrailerControls = showTrailerControls,
-            trailerSeekToken = trailerSeekToken,
-            trailerSeekDeltaMs = trailerSeekDeltaMs,
-            onTrailerControlKey = onTrailerControlKey,
-            onTrailerProgressChanged = onTrailerProgressChanged,
-            onTrailerEnded = onTrailerEnded,
-            isScrolledPastHero = isScrolledPastHero,
-            leftGradient = leftGradientBitmap,
-            bottomGradient = bottomGradientBitmap,
-        )
+        // Sticky background — backdrop or trailer. Only this layer participates in the
+        // backdrop shared-element morph; the scrollable content stays outside the morph.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .sharedDetailHeroBackdropDestination(
+                    itemId = heroSharedElementKey,
+                    heroBackdropUrl = heroBackdropUrl
+                )
+        ) {
+            BackdropLayer(
+                backdropRequest = backdropRequest,
+                heroBackdropRequest = if (shouldShowSeedBackdropUnderlay) heroBackdropRequest else null,
+                trailerUrl = trailerUrl,
+                trailerAudioUrl = trailerAudioUrl,
+                isTrailerPlaying = isTrailerPlaying,
+                isBackgroundTrailerPlaying = isBackgroundTrailerPlaying,
+                pauseBackgroundTrailerOnScroll = pauseBackgroundTrailerOnScroll,
+                isTrailerPaused = isTrailerPaused,
+                showTrailerControls = showTrailerControls,
+                trailerSeekToken = trailerSeekToken,
+                trailerSeekDeltaMs = trailerSeekDeltaMs,
+                onTrailerControlKey = onTrailerControlKey,
+                onTrailerProgressChanged = onTrailerProgressChanged,
+                onTrailerEnded = onTrailerEnded,
+                isScrolledPastHero = isScrolledPastHero,
+                leftGradient = leftGradientBitmap,
+                bottomGradient = bottomGradientBitmap,
+            )
+        }
 
         // Single scrollable column with hero + content
         CompositionLocalProvider(
@@ -2613,6 +2624,7 @@ private fun MetaDetailsContent(
                         hideLogoDuringTrailer = hideLogoDuringTrailer,
                         isTrailerPlaying = isTrailerPlaying,
                         logoSharedElementKey = sharedElementItemId ?: meta.id,
+                        descriptionSharedElementKey = sharedElementItemId ?: meta.id,
                         playButtonFocusRequester = heroPlayButtonFocusRequester,
                         onHeroActionFocused = {
                             if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {

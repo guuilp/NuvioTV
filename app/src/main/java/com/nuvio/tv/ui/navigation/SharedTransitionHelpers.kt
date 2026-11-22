@@ -45,21 +45,29 @@ private fun rememberSharedElementEnabled(): Boolean {
     return sharedScope != null && navScope != null && !rememberReducedMotion()
 }
 
+private val tmdbSizeRegex = Regex("""/t/p/[^/]+/""", RegexOption.IGNORE_CASE)
+
 /**
- * Source-side artwork shared element.
- *
- * Registers unconditionally (when the scope is available and reduced motion is off). The key is
- * per-item, so only the clicked card's artwork can pair with the destination. This avoids the
- * race-prone URL comparison against a click-time volatile and lets size variants morph as long as
- * the destination renders the handoff image under the transition.
+ * Canonicalizes image URLs so the same asset with different TMDB size variants matches.
+ * `/w780/x.jpg`, `/w1280/x.jpg`, and `/original/x.jpg` all reduce to the same key.
  */
-fun Modifier.sharedDetailHeroBackdropSource(itemId: String): Modifier = composed {
-    if (!rememberSharedElementEnabled()) return@composed this
+internal fun String.normalizedImageUrl(): String {
+    return trim()
+        .removeSuffix("/")
+        .replace(tmdbSizeRegex, "/t/p/<size>/")
+        .substringBefore("?")
+}
+
+private fun Modifier.sharedElementForKey(
+    key: String,
+    enabled: Boolean
+): Modifier = composed {
+    if (!enabled || !rememberSharedElementEnabled()) return@composed this
     val sharedScope = LocalSharedTransitionScope.current!!
     val navScope = LocalNavAnimatedVisibilityScope.current!!
     with(sharedScope) {
         this@composed.sharedElement(
-            rememberSharedContentState(key = "detail-hero-$itemId"),
+            rememberSharedContentState(key = key),
             animatedVisibilityScope = navScope,
             boundsTransform = { _, _ ->
                 tween(
@@ -70,6 +78,17 @@ fun Modifier.sharedDetailHeroBackdropSource(itemId: String): Modifier = composed
         )
     }
 }
+
+/**
+ * Source-side artwork shared element.
+ *
+ * Registers unconditionally (when the scope is available and reduced motion is off). The key is
+ * per-item, so only the clicked card's artwork can pair with the destination. This avoids the
+ * race-prone URL comparison against a click-time volatile and lets size variants morph as long as
+ * the destination renders the handoff image under the transition.
+ */
+fun Modifier.sharedDetailHeroBackdropSource(itemId: String): Modifier =
+    sharedElementForKey("detail-hero-$itemId", enabled = true)
 
 /**
  * Destination-side artwork shared element.
@@ -81,24 +100,10 @@ fun Modifier.sharedDetailHeroBackdropSource(itemId: String): Modifier = composed
 fun Modifier.sharedDetailHeroBackdropDestination(
     itemId: String,
     heroBackdropUrl: String?
-): Modifier = composed {
-    if (!rememberSharedElementEnabled()) return@composed this
-    if (heroBackdropUrl.isNullOrBlank()) return@composed this
-    val sharedScope = LocalSharedTransitionScope.current!!
-    val navScope = LocalNavAnimatedVisibilityScope.current!!
-    with(sharedScope) {
-        this@composed.sharedElement(
-            rememberSharedContentState(key = "detail-hero-$itemId"),
-            animatedVisibilityScope = navScope,
-            boundsTransform = { _, _ ->
-                tween(
-                    durationMillis = NuvioMotion.tokens.durations.medium,
-                    easing = NuvioMotion.tokens.easings.emphasized
-                )
-            }
-        )
-    }
-}
+): Modifier = sharedElementForKey(
+    key = "detail-hero-$itemId",
+    enabled = !heroBackdropUrl.isNullOrBlank()
+)
 
 /**
  * Logo shared element.
@@ -109,21 +114,35 @@ fun Modifier.sharedDetailHeroBackdropDestination(
 fun Modifier.sharedDetailHeroLogo(
     itemId: String,
     logoUrl: String?
-): Modifier = composed {
-    if (!rememberSharedElementEnabled()) return@composed this
-    if (logoUrl.isNullOrBlank()) return@composed this
-    val sharedScope = LocalSharedTransitionScope.current!!
-    val navScope = LocalNavAnimatedVisibilityScope.current!!
-    with(sharedScope) {
-        this@composed.sharedElement(
-            rememberSharedContentState(key = "detail-logo-$itemId"),
-            animatedVisibilityScope = navScope,
-            boundsTransform = { _, _ ->
-                tween(
-                    durationMillis = NuvioMotion.tokens.durations.medium,
-                    easing = NuvioMotion.tokens.easings.emphasized
-                )
-            }
-        )
-    }
-}
+): Modifier = sharedElementForKey(
+    key = "detail-logo-$itemId",
+    enabled = !logoUrl.isNullOrBlank()
+)
+
+/**
+ * Description shared element.
+ *
+ * Registers when this composable actually renders description text. Inactive for row cards that
+ * have no description source.
+ */
+fun Modifier.sharedDetailHeroDescription(
+    itemId: String,
+    description: String?
+): Modifier = sharedElementForKey(
+    key = "detail-description-$itemId",
+    enabled = !description.isNullOrBlank()
+)
+
+/**
+ * Title shared element.
+ *
+ * Registers when this composable renders the title as styled text (the no-logo fallback). If the
+ * logo is present, the logo helper takes precedence and this key is unused.
+ */
+fun Modifier.sharedDetailHeroTitle(
+    itemId: String,
+    title: String?
+): Modifier = sharedElementForKey(
+    key = "detail-title-$itemId",
+    enabled = !title.isNullOrBlank()
+)

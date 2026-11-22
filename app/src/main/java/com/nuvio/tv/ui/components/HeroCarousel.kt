@@ -80,7 +80,9 @@ import com.nuvio.tv.ui.util.formatHeroRuntime
 import com.nuvio.tv.ui.util.LocalRecompositionHighlighterEnabled
 import com.nuvio.tv.ui.util.localizedContentType
 import com.nuvio.tv.ui.navigation.sharedDetailHeroBackdropSource
+import com.nuvio.tv.ui.navigation.sharedDetailHeroDescription
 import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
+import com.nuvio.tv.ui.navigation.sharedDetailHeroTitle
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
 import com.nuvio.tv.ui.util.localizedGenreLabel
 import kotlinx.coroutines.delay
@@ -357,7 +359,8 @@ private fun HeroCarouselSlide(
                     style = MaterialTheme.typography.headlineLarge,
                     color = NuvioTheme.colors.TextPrimary,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.sharedDetailHeroTitle(item.id, title = item.name)
                 )
             }
 
@@ -442,7 +445,8 @@ private fun HeroCarouselSlide(
                     color = NuvioTheme.colors.TextPrimary,
                     maxLines = 4,
                     autoScrollEnabled = descriptionAutoScrollEnabled,
-                    onScrollHoldChanged = onDescriptionScrollHoldChanged
+                    onScrollHoldChanged = onDescriptionScrollHoldChanged,
+                    modifier = Modifier.sharedDetailHeroDescription(item.id, description = description)
                 )
             }
         }

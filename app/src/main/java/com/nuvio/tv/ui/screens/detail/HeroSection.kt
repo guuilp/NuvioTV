@@ -1,7 +1,9 @@
 package com.nuvio.tv.ui.screens.detail
 
 import com.nuvio.tv.ui.theme.NuvioMotion
+import com.nuvio.tv.ui.navigation.sharedDetailHeroDescription
 import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
+import com.nuvio.tv.ui.navigation.sharedDetailHeroTitle
 
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.AnimatedVisibility
@@ -132,6 +134,7 @@ fun HeroContentSection(
     playButtonFocusRequester: FocusRequester? = null,
     restorePlayFocusToken: Int = 0,
     logoSharedElementKey: String? = null,
+    descriptionSharedElementKey: String? = null,
     onHeroActionFocused: () -> Unit = {},
     onPlayFocusRestored: () -> Unit = {},
     onShowFullDescription: () -> Unit = {},
@@ -244,7 +247,18 @@ fun HeroContentSection(
                         text = meta.name,
                         style = MaterialTheme.typography.displayMedium,
                         color = NuvioTheme.colors.TextPrimary,
-                        modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm)
+                        modifier = Modifier
+                            .padding(bottom = NuvioTheme.spacing.sm)
+                            .then(
+                                if (logoSharedElementKey != null) {
+                                    Modifier.sharedDetailHeroTitle(
+                                        itemId = logoSharedElementKey,
+                                        title = meta.name
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
                     )
                 }
             }
@@ -384,6 +398,16 @@ fun HeroContentSection(
                             modifier = Modifier
                                 .fillMaxWidth(0.6f)
                                 .padding(bottom = NuvioTheme.spacing.md)
+                                .then(
+                                    if (descriptionSharedElementKey != null) {
+                                        Modifier.sharedDetailHeroDescription(
+                                            itemId = descriptionSharedElementKey,
+                                            description = description
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                )
                         )
                     }
 
