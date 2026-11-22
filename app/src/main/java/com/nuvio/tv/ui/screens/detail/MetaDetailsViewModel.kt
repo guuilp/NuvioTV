@@ -165,6 +165,11 @@ class MetaDetailsViewModel @Inject constructor(
     private var trailerHasPlayed = false
     private var trailerHandoffActive = false
     private var handoffTrailerYoutubeKey: String? = null
+    private var pendingTrailerHandoff = false
+    private var pendingHandoffVideoUrl: String? = null
+    private var pendingHandoffAudioUrl: String? = null
+    private var pendingHandoffPlayInBackground = false
+    private var navTransitionSettled = false
     private var suppressSeasonAutoSwitch = false
 
     private var isPlayButtonFocused = false
@@ -2879,19 +2884,48 @@ class MetaDetailsViewModel @Inject constructor(
         trailerHandoffActive = true
         trailerHasPlayed = true
         handoffTrailerYoutubeKey = transfer?.youtubeKey ?: poolHandoff?.youtubeKey
+        pendingHandoffVideoUrl = transfer?.videoUrl ?: poolHandoff?.videoUrl
+        pendingHandoffAudioUrl = transfer?.audioUrl ?: poolHandoff?.audioUrl
+        pendingHandoffPlayInBackground = playInBackground
+
+        if (!navTransitionSettled) {
+            // Defer actual playback until the home<->detail shared-element morph finishes,
+            // so the background trailer does not draw over the expanding backdrop.
+            pendingTrailerHandoff = true
+            return
+        }
+
+        commitTrailerHandoff()
+    }
+
+    private fun commitTrailerHandoff() {
+        pendingTrailerHandoff = false
         _uiState.update { state ->
             state.copy(
-                trailerUrl = transfer?.videoUrl ?: poolHandoff?.videoUrl,
-                trailerAudioUrl = transfer?.audioUrl ?: poolHandoff?.audioUrl,
+                trailerUrl = pendingHandoffVideoUrl,
+                trailerAudioUrl = pendingHandoffAudioUrl,
                 isTrailerLoading = false
             )
         }
         setTrailerPlaybackState(
-            isPlaying = !playInBackground,
+            isPlaying = !pendingHandoffPlayInBackground,
             showControls = false,
             hideLogo = false,
-            isBackgroundPlaying = playInBackground
+            isBackgroundPlaying = pendingHandoffPlayInBackground
         )
+    }
+
+    /**
+     * Called by the UI once the home<->detail shared-element nav transition has settled.
+     * Until this fires, automatic trailer starts (handoff and idle-timer autoplay) are held back.
+     */
+    fun onTransitionSettled() {
+        if (navTransitionSettled) return
+        navTransitionSettled = true
+        if (pendingTrailerHandoff) {
+            commitTrailerHandoff()
+        }
+        startIdleTimer()
     }
 
     private fun withHandoffTrailer(meta: Meta): Meta {
@@ -2981,6 +3015,7 @@ class MetaDetailsViewModel @Inject constructor(
         if (!trailerAutoplayEnabled) return
         if (trailerHasPlayed) return
         if (!isPlayButtonFocused) return
+        if (!navTransitionSettled) return
 
         idleTimerJob = viewModelScope.launch {
             delay(trailerDelayMs)
@@ -3200,5 +3235,12 @@ class MetaDetailsViewModel @Inject constructor(
         idleTimerJob?.cancel()
         trailerFetchJob?.cancel()
         nextToWatchJob?.cancel()
+        if (pendingTrailerHandoff) {
+            // Leaving before the nav transition settled — don't start a trailer for a screen
+            // that's already gone, and release the pending handoff resources.
+            backgroundTrailerController.cancelTransfer(itemId)
+            trailerPlayerPool.cancelHandoff(itemId)
+            pendingTrailerHandoff = false
+        }
     }
 }

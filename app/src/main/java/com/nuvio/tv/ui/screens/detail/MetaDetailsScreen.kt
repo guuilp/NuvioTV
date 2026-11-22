@@ -12,6 +12,7 @@ import com.nuvio.tv.ui.navigation.normalizedImageUrl
 import com.nuvio.tv.ui.navigation.sharedDetailHeroBackdropDestination
 import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
 
+import android.util.Log
 import android.view.KeyEvent
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
@@ -1152,7 +1153,8 @@ fun MetaDetailsScreen(
                     onNavigateToCastDetail = onNavigateToCastDetail,
                     onNavigateToTmdbEntityBrowse = onNavigateToTmdbEntityBrowse,
                     onNavigateToDetail = onNavigateToDetail,
-                    onPosterLongPress = { item -> viewModel.posterOptions.show(item, null) }
+                    onPosterLongPress = { item -> viewModel.posterOptions.show(item, null) },
+                    onTransitionSettled = viewModel::onTransitionSettled
                 )
             }
         }
@@ -1372,7 +1374,8 @@ private fun MetaDetailsContent(
     onNavigateToCastDetail: (personId: Int, personName: String, preferCrew: Boolean) -> Unit = { _, _, _ -> },
     onNavigateToTmdbEntityBrowse: (entityKind: String, entityId: Int, entityName: String, sourceType: String) -> Unit = { _, _, _, _ -> },
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit = { _, _, _ -> },
-    onPosterLongPress: (MetaPreview) -> Unit = {}
+    onPosterLongPress: (MetaPreview) -> Unit = {},
+    onTransitionSettled: () -> Unit = {}
 ) {
     val playbackAvailability = LocalPlaybackAvailability.current
     val canLoadMoreComments = commentsCurrentPage in 1 until commentsPageCount
@@ -2266,6 +2269,12 @@ private fun MetaDetailsContent(
     val isNavTransitionActive = navAnimatedVisibilityScope?.transition?.let {
         it.currentState != it.targetState
     } ?: false
+    Log.d("HeroMorph", "isNavTransitionActive=$isNavTransitionActive")
+    LaunchedEffect(isNavTransitionActive) {
+        if (!isNavTransitionActive) {
+            onTransitionSettled()
+        }
+    }
     val seedBackdropUrl = heroBackdropUrl?.takeIf { it.isNotBlank() }
     val backdropDataUrl = meta.backdropUrl ?: meta.poster
     val shouldReuseSeedBackdrop = seedBackdropUrl != null &&
