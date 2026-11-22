@@ -2046,6 +2046,9 @@ fun PlayerRuntimeController.onEvent(
         PlayerEvent.OnDismissSkipIntro -> {
             _uiState.update { it.copy(skipIntervalDismissed = true) }
         }
+        PlayerEvent.OnStartOverFromResumeNotice -> {
+            startOverFromResumeNotice()
+        }
         PlayerEvent.OnPlayNextEpisode -> {
             playNextEpisode(userInitiated = true)
         }

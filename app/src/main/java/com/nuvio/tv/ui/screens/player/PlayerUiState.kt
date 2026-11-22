@@ -61,6 +61,10 @@ sealed interface PostPlayMode {
     }
 }
 
+data class ResumeNotice(
+    val positionMs: Long
+)
+
 data class PlayerUiState(
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = true,
@@ -195,6 +199,9 @@ data class PlayerUiState(
     val playbackIssueReportId: String? = null,
     val playbackIssueReportError: String? = null,
     val pendingSeekPosition: Long? = null, // For resuming from saved progress
+    // Resume polish: set after the player seeks to saved progress; the chip
+    // offers "Start over" and clears itself after a few seconds.
+    val resumeNotice: ResumeNotice? = null,
     // Parental guide overlay
     val parentalWarnings: List<ParentalWarning> = emptyList(),
     val showParentalGuide: Boolean = false,
@@ -397,6 +404,7 @@ sealed class PlayerEvent {
     data object OnDismissPauseOverlay : PlayerEvent()
     data object OnSkipIntro : PlayerEvent()
     data object OnDismissSkipIntro : PlayerEvent()
+    data object OnStartOverFromResumeNotice : PlayerEvent()
     data object OnPlayNextEpisode : PlayerEvent()
     data object OnDismissNextEpisodeCard : PlayerEvent()
     data object OnStillWatchingContinue : PlayerEvent()

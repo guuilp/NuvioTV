@@ -12,6 +12,7 @@ import com.nuvio.tv.ui.screens.detail.formatPlaybackTime
 import com.nuvio.tv.ui.theme.NuvioMotion
 import kotlinx.coroutines.delay
 
+import com.nuvio.tv.ui.theme.NuvioPrimitives
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.accentBrush
 
@@ -1731,6 +1732,28 @@ fun PlayerScreen(
                 .then(playerControlsDim)
         ) {
             StreamSourceIndicator(text = uiState.streamSourceIndicatorText)
+        }
+
+        // Resume polish: transient "Resumed from ..." chip after the player
+        // seeks to saved progress on open, with a focusable "Start over" action.
+        AnimatedVisibility(
+            visible = uiState.resumeNotice != null &&
+                uiState.error == null &&
+                !postPlayRecommendationState.isVisible,
+            enter = fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.fast)),
+            exit = fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.fast)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 28.dp)
+                .zIndex(2.45f)
+                .then(playerControlsDim)
+        ) {
+            uiState.resumeNotice?.let { notice ->
+                ResumeNoticeChip(
+                    notice = notice,
+                    onStartOver = { viewModel.onEvent(PlayerEvent.OnStartOverFromResumeNotice) }
+                )
+            }
         }
 
         partyState.party?.let { party ->
@@ -4488,6 +4511,45 @@ internal fun DialogButton(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun ResumeNoticeChip(
+    notice: ResumeNotice,
+    onStartOver: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .background(
+                color = NuvioPrimitives.neutral875.copy(alpha = 0.85f),
+                shape = RoundedCornerShape(NuvioTheme.radii.md)
+            )
+            .padding(start = 18.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.player_resumed_from, formatTime(notice.positionMs)),
+            color = Color.White,
+            fontSize = 14.sp,
+            modifier = Modifier.padding(end = NuvioTheme.spacing.md)
+        )
+        Button(
+            onClick = onStartOver,
+            colors = ButtonDefaults.colors(
+                containerColor = Color.White.copy(alpha = 0.14f),
+                contentColor = Color.White,
+                focusedContainerColor = NuvioTheme.colors.Secondary,
+                focusedContentColor = NuvioTheme.colors.OnSecondary
+            ),
+            shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.sm))
+        ) {
+            Text(
+                text = stringResource(R.string.player_resume_start_over),
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
     }
 }
 

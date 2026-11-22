@@ -47,6 +47,17 @@ data class WatchProgress(
         const val SOURCE_REMOTE_HISTORY = "remote_history"
         const val COMPLETED_THRESHOLD = 0.90f
         const val SIMKL_COMPLETED_THRESHOLD = 0.80f
+
+        // Resume polish: without a floor, a 4-second accidental tap pins every
+        // later open of an item to 0:04 and creates a Continue Watching entry
+        // forever. 30 s is long enough to ignore such peeks and short enough to
+        // keep genuinely sampled 30-60 s positions visible.
+        const val MIN_IN_PROGRESS_MS = 30_000L
+
+        // Percent-only sources (SOURCE_SIMKL_PLAYBACK and other remote playback
+        // projections) have no reliable millisecond position, so 2% keeps their
+        // resume state from being lost to the millisecond floor.
+        const val MIN_IN_PROGRESS_PERCENT = 0.02f
     }
 
     /**
@@ -66,10 +77,16 @@ data class WatchProgress(
     fun isCompleted(threshold: Float = completionThreshold()): Boolean = progressPercentage >= threshold
 
     /**
-     * Returns true if any progress was saved and the content is not completed.
-     * No start threshold, same as NuvioMobile.
+     * Returns true if meaningful progress was saved and the content is not completed.
+     *
+     * Resume polish: below [MIN_IN_PROGRESS_MS] (or [MIN_IN_PROGRESS_PERCENT] for
+     * percent-only sources) the position is treated as an accidental peek and does
+     * not create a Continue Watching entry. At or above the floor the previous
+     * semantics are unchanged.
      */
-    fun isInProgress(): Boolean = !isCompleted() && (position > 0L || progressPercentage > 0f)
+    fun isInProgress(): Boolean =
+        !isCompleted() &&
+            (position >= MIN_IN_PROGRESS_MS || progressPercentage >= MIN_IN_PROGRESS_PERCENT)
 
     private fun completionThreshold(): Float =
         completionThresholdOverride?.takeIf { it.isFinite() && it > 0f && it <= 1f }
@@ -82,18 +99,23 @@ data class WatchProgress(
         get() = (duration - position).coerceAtLeast(0)
 
     fun resolveResumePosition(actualDuration: Long): Long {
-        if (actualDuration <= 0) return position.coerceAtLeast(0L)
-        // Position is the most precise resume indicator. Prefer it over
-        // progressPercent even when saved duration is 0 (e.g. progress was
-        // saved while paused and getEffectiveDuration returned 0).
-        if (position > 0) {
-            return position.coerceIn(0L, actualDuration)
+        val resolved = if (actualDuration <= 0) {
+            position.coerceAtLeast(0L)
+        } else if (position > 0) {
+            // Position is the most precise resume indicator. Prefer it over
+            // progressPercent even when saved duration is 0 (e.g. progress was
+            // saved while paused and getEffectiveDuration returned 0).
+            position.coerceIn(0L, actualDuration)
+        } else {
+            progressPercent?.let { explicitPercent ->
+                val fraction = (explicitPercent / 100f).coerceIn(0f, 1f)
+                (actualDuration * fraction).toLong()
+            } ?: position.coerceAtLeast(0L)
         }
-        progressPercent?.let { explicitPercent ->
-            val fraction = (explicitPercent / 100f).coerceIn(0f, 1f)
-            return (actualDuration * fraction).toLong()
-        }
-        return position.coerceAtLeast(0L)
+        // Resume polish: a target under the in-progress floor is an accidental
+        // peek, so start fresh instead of pinning playback to a tiny position.
+        // Legitimate larger positions are returned untouched.
+        return if (resolved < MIN_IN_PROGRESS_MS) 0L else resolved
     }
 }
 

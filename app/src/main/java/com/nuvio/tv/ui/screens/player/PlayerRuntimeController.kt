@@ -457,6 +457,7 @@ class PlayerRuntimeController(
     internal val afrPreflightGate = AfrPreflightGate()
     internal var hideAspectRatioIndicatorJob: Job? = null
     internal var hideStreamSourceIndicatorJob: Job? = null
+    internal var hideResumeNoticeJob: Job? = null
     internal var partyRateNudge: Float? = null
     internal var partyPreviousKey: String? = null
     internal var hidePlayerEngineSwitchInfoJob: Job? = null

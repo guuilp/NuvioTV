@@ -89,6 +89,9 @@ internal data class PlayerNavigationArgs(
                 filename = decodedOrNull("filename"),
                 videoHash = savedStateHandle.get<String>("videoHash")?.takeIf { it.isNotEmpty() },
                 videoSize = savedStateHandle.get<String>("videoSize")?.toLongOrNull(),
+                // Resume polish: honored on both initial playback paths in
+                // PlayerRuntimeControllerStartup; when true, saved progress is
+                // not loaded and playback starts at 0.
                 startFromBeginning = savedStateHandle.get<String>("startFromBeginning")?.toBooleanStrictOrNull() == true,
                 addonName = decodedOrNull("addonName"),
                 addonLogo = decodedOrNull("addonLogo"),

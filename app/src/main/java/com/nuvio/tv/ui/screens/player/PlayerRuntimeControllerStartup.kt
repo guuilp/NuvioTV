@@ -63,7 +63,10 @@ internal fun PlayerRuntimeController.startInitialPlaybackIfNeeded() {
                 preparePlaybackBeforeStart(
                     url = localUrl,
                     headers = emptyMap(),
-                    loadSavedProgress = true
+                    // Resume polish: honor the "start from beginning" nav arg on
+                    // the initial torrent path too (the direct URL path below
+                    // already does), so no saved position is applied.
+                    loadSavedProgress = !navigationArgs.startFromBeginning
                 )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

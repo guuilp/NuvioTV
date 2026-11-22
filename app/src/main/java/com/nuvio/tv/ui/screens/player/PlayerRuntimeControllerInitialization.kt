@@ -1135,6 +1135,10 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                 if (initialResumePosition > 0L) {
                     setMediaSource(initialMediaSource, initialResumePosition)
+                    // Resume polish: the initial resume is applied through
+                    // setMediaSource, not tryApplyPendingResumeProgress, so the
+                    // "Resumed from" chip has to be raised here as well.
+                    showResumeNotice(initialResumePosition)
                     clearPendingInitialResumePosition()
                     updatePlaybackTimeline(currentPosition = initialResumePosition)
                 } else {
