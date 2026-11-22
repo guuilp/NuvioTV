@@ -71,8 +71,8 @@ private fun Modifier.sharedElementForKey(
             animatedVisibilityScope = navScope,
             boundsTransform = { _, _ ->
                 tween(
-                    durationMillis = NuvioMotion.tokens.durations.medium,
-                    easing = NuvioMotion.tokens.easings.emphasized
+                    durationMillis = NuvioMotion.tokens.durations.slow,
+                    easing = NuvioMotion.tokens.easings.standard
                 )
             }
         )

@@ -104,13 +104,13 @@ private fun routePair(from: String, to: String): RoutePair = when {
 // Home -> Detail: let the shared elements carry the motion. The home screen stays
 // put, while the detail screen's non-shared content fades in quickly.
 private fun homeToDetailEnter(): EnterTransition =
-    fadeIn(tween(NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard))
+    fadeIn(tween(250, easing = NuvioMotion.tokens.easings.standard))
 
 private fun homeToDetailExit(): ExitTransition = ExitTransition.None
 
 // Detail -> Home (pop): reverse — the detail screen stays put while home fades back in.
 private fun detailToHomePopEnter(): EnterTransition =
-    fadeIn(tween(NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard))
+    fadeIn(tween(250, easing = NuvioMotion.tokens.easings.standard))
 
 private fun detailToHomePopExit(): ExitTransition = ExitTransition.None
 
