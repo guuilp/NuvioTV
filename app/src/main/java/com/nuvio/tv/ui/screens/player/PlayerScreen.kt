@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.accentBrush
 
+import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -81,6 +82,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -1452,6 +1454,7 @@ fun PlayerScreen(
             isTorrentStream = uiState.isTorrentStream,
             torrentBufferingMessage = uiState.torrentBufferingMessage,
             torrentBufferingProgress = uiState.torrentBufferingProgress,
+            onSwitchSource = { viewModel.onEvent(PlayerEvent.OnShowSourcesPanel) },
             modifier = playerControlsDim
         )
 
@@ -1728,6 +1731,9 @@ fun PlayerScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = 128.dp)
+                // Player recovery UX: fallback notices must stay readable over the loading
+                // overlay (zIndex 2f) that recovery shows.
+                .zIndex(2.05f)
                 .then(playerControlsDim)
         ) {
             StreamSourceIndicator(text = uiState.streamSourceIndicatorText)
@@ -4520,6 +4526,10 @@ private fun formatSubtitleDelay(delayMs: Int): String {
     return String.format(Locale.US, "%+.3fs", delayMs / 1000f)
 }
 
+// Player recovery UX: mid-playback rebuffer hints.
+private const val BUFFERING_ELAPSED_HINT_MS = 5_000L
+private const val BUFFERING_SWITCH_SOURCE_HINT_MS = 15_000L
+
 /**
  * Buffering indicator extracted into its own composable to isolate
  * recomposition scope. When [isBuffering] toggles, only this subtree
@@ -4532,8 +4542,24 @@ private fun PlayerBufferingIndicator(
     isTorrentStream: Boolean,
     torrentBufferingMessage: String?,
     torrentBufferingProgress: Float,
+    onSwitchSource: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    // Player recovery UX: elapsed time only counts continuous buffering. The effect is keyed on
+    // both flags, so a rapid buffering flap or the loading overlay taking over restarts it at 0.
+    var bufferingElapsedMs by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(isBuffering, showLoadingOverlay) {
+        if (!isBuffering || showLoadingOverlay) {
+            bufferingElapsedMs = 0L
+            return@LaunchedEffect
+        }
+        val startedAtMs = SystemClock.elapsedRealtime()
+        while (true) {
+            delay(1_000L)
+            bufferingElapsedMs = SystemClock.elapsedRealtime() - startedAtMs
+        }
+    }
+
     if (!isBuffering || showLoadingOverlay) return
 
     Box(
@@ -4576,7 +4602,33 @@ private fun PlayerBufferingIndicator(
                 }
             }
         } else {
-            LoadingIndicator()
+            // Player recovery UX: after a few seconds a naked spinner looks frozen, so show how
+            // long the stall has lasted (matching the torrent rebuffer label) and, after 15 s,
+            // offer a focusable escape hatch to the sources panel.
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                LoadingIndicator()
+                if (bufferingElapsedMs >= BUFFERING_ELAPSED_HINT_MS) {
+                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                    Text(
+                        text = stringResource(
+                            R.string.player_buffering_elapsed,
+                            (bufferingElapsedMs / 1_000L).toInt()
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+                if (bufferingElapsedMs >= BUFFERING_SWITCH_SOURCE_HINT_MS && onSwitchSource != null) {
+                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                    DialogButton(
+                        text = stringResource(R.string.player_buffering_switch_source),
+                        onClick = onSwitchSource,
+                        isPrimary = false
+                    )
+                }
+            }
         }
     }
 }
