@@ -11,7 +11,9 @@ import com.nuvio.tv.core.logging.diagnosticSummary
 import com.nuvio.tv.core.logging.rawForLog
 import com.nuvio.tv.core.logging.urlForLog
 import com.nuvio.tv.core.util.findCause
+import com.nuvio.tv.data.local.AuthSessionCacheDataStore
 import com.nuvio.tv.data.local.AuthSessionNoticeDataStore
+import com.nuvio.tv.data.local.CachedAuthSession
 import com.nuvio.tv.data.remote.supabase.DeviceLoginStartResult
 import com.nuvio.tv.data.remote.supabase.TvLoginExchangeResult
 import com.nuvio.tv.data.remote.supabase.TvLoginPollResult
@@ -84,6 +86,7 @@ class AuthManager @Inject constructor(
     private val httpClient: OkHttpClient,
     @param:Named("customServerAuth") private val customServerHttpClient: OkHttpClient,
     private val authSessionNoticeDataStore: AuthSessionNoticeDataStore,
+    private val authSessionCacheDataStore: AuthSessionCacheDataStore,
     private val accountLocalDataResetService: AccountLocalDataResetService,
     private val authDiagnosticReportRepository: AuthDiagnosticReportRepository,
     private val serverConfiguration: ServerConfiguration
@@ -105,6 +108,38 @@ class AuthManager @Inject constructor(
 
     init {
         observeSessionStatus()
+        // Launch chain: publish the locally cached account right away so the
+        // app surface never waits for the network validation of the session.
+        publishCachedSessionOnStartup()
+    }
+
+    /**
+     * Launch chain: reads the last known account from local storage only.
+     *
+     * The Supabase session status can stay [SessionStatus.Initializing] while
+     * the library refreshes an expired access token over the network, and the
+     * validation below performs another HTTP round-trip. Emitting the cached
+     * account from disk keeps the app surface unblocked; the network
+     * validation still runs afterwards and transitions to the authoritative
+     * state when it resolves.
+     */
+    private fun publishCachedSessionOnStartup() {
+        scope.launch {
+            val cached = runCatching { authSessionCacheDataStore.read() }.getOrNull() ?: return@launch
+            publishCachedAuthState(cached)
+        }
+    }
+
+    /**
+     * Publishes a locally known account without touching the network.
+     *
+     * Only applies while the state is still [AuthState.Loading]: an
+     * authoritative state (signed out, or a validated account) always wins.
+     */
+    private fun publishCachedAuthState(cached: CachedAuthSession) {
+        if (_authState.value !is AuthState.Loading) return
+        Log.d(TAG, "Launch chain: publishing cached auth state for ${cached.userId.rawForLog()}")
+        _authState.value = AuthState.FullAccount(userId = cached.userId, email = cached.email)
     }
 
     private fun observeSessionStatus() {
@@ -133,12 +168,26 @@ class AuthManager @Inject constructor(
                             if (user.email.isNullOrBlank()) {
                                 clearInvalidRemoteSession()
                                 finishStartupAuthDiagnostics("signed_out", "authenticated_session_missing_email")
-                            } else if (!validateAuthenticatedSession(force = false)) {
-                                finishStartupAuthDiagnostics("signed_out", "authenticated_session_invalid")
                             } else {
-                                _authState.value = AuthState.FullAccount(userId = user.id, email = user.email!!)
-                                authSessionNoticeDataStore.markNuvioAuthenticated()
-                                finishStartupAuthDiagnostics("success", "authenticated_session_validated")
+                                // Launch chain: the session is already known locally, so
+                                // publish it before the validation round-trip below.
+                                publishCachedAuthState(
+                                    CachedAuthSession(userId = user.id, email = user.email!!)
+                                )
+                                if (!validateAuthenticatedSession(force = false)) {
+                                    finishStartupAuthDiagnostics("signed_out", "authenticated_session_invalid")
+                                } else {
+                                    _authState.value = AuthState.FullAccount(userId = user.id, email = user.email!!)
+                                    authSessionNoticeDataStore.markNuvioAuthenticated()
+                                    // Launch chain: remember the validated account locally so the
+                                    // next launch can surface it without a network call.
+                                    scope.launch {
+                                        runCatching {
+                                            authSessionCacheDataStore.write(user.id, user.email!!)
+                                        }
+                                    }
+                                    finishStartupAuthDiagnostics("success", "authenticated_session_validated")
+                                }
                             }
                         } else {
                             clearInvalidRemoteSession()
@@ -189,7 +238,9 @@ class AuthManager @Inject constructor(
                             mapOf("authState" to _authState.value.nameForLog())
                         )
                         Log.d(TAG, "SessionStatus.Initializing")
-                        _authState.value = AuthState.Loading
+                        // Launch chain: the state is already Loading here. It is deliberately
+                        // not re-assigned, so an account that was already published from the
+                        // local cache is never downgraded back to Loading.
                     }
                     else -> {
                         val diagnostics = getStartupAuthDiagnostics()
@@ -390,6 +441,8 @@ class AuthManager @Inject constructor(
         cachedEffectiveUserId = null
         cachedEffectiveUserSourceUserId = null
         _authState.value = AuthState.SignedOut
+        // Launch chain: the local cache must not resurrect a signed-out account.
+        runCatching { authSessionCacheDataStore.clear() }
         accountLocalDataResetService.clearAfterSignOut()
     }
 
@@ -401,6 +454,8 @@ class AuthManager @Inject constructor(
         cachedEffectiveUserId = null
         cachedEffectiveUserSourceUserId = null
         _authState.value = AuthState.SignedOut
+        // Launch chain: the local cache must not resurrect a signed-out account.
+        runCatching { authSessionCacheDataStore.clear() }
         authSessionNoticeDataStore.markNuvioExplicitLogout()
         if (hadSession) accountLocalDataResetService.clearAfterSignOut()
         return Result.success(Unit)
@@ -416,6 +471,8 @@ class AuthManager @Inject constructor(
         cachedEffectiveUserId = null
         cachedEffectiveUserSourceUserId = null
         _authState.value = AuthState.SignedOut
+        // Launch chain: the local cache must not resurrect a signed-out account.
+        runCatching { authSessionCacheDataStore.clear() }
         if (authSessionNoticeDataStore.markUnexpectedNuvioLogoutIfNeeded()) {
             accountLocalDataResetService.clearAfterSignOut()
         }

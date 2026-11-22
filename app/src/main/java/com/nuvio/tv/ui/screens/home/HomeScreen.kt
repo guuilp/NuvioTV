@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.home
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.BuildConfig
 
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.AnimatedVisibility
@@ -191,23 +192,35 @@ fun HomeScreen(
         hasCollectionContent,
         hasHeroContent,
         initialCwResolved,
-        modernPresentationReady
+        modernPresentationReady,
+        uiState.continueWatchingItems.size
     ) {
         // Track that addons are known (even if isLoading flipped too fast to catch).
         if (uiState.installedAddonsCount > 0) {
             catalogLoadingStarted = true
         }
+        // Launch chain: Continue Watching comes from the disk cache (~50 ms), so it is
+        // ready long before the addon catalogs are. Release the gate as soon as it has
+        // content instead of holding the user on a spinner until the timeout.
+        val continueWatchingReady = initialCwResolved && uiState.continueWatchingItems.isNotEmpty()
         // Wait until catalog loading has completed with content AND the CW
         // pipeline has completed its first emission.
         if (!homeStableGateReleased &&
-            catalogLoadingStarted &&
-            !uiState.isLoading &&
-            initialCwResolved &&
-            modernPresentationReady &&
-            // When addons are installed, require at least one catalog row.
-            (hasCatalogContent || uiState.installedAddonsCount == 0)
+            (
+                continueWatchingReady ||
+                    (
+                        catalogLoadingStarted &&
+                            !uiState.isLoading &&
+                            initialCwResolved &&
+                            modernPresentationReady &&
+                            // When addons are installed, require at least one catalog row.
+                            (hasCatalogContent || uiState.installedAddonsCount == 0)
+                        )
+            )
         ) {
-            Log.d("HomeGate", "RELEASE: catalogs=$hasCatalogContent cwResolved=$initialCwResolved cwItems=${uiState.continueWatchingItems.size} addons=${uiState.installedAddonsCount}")
+            if (BuildConfig.IS_DEBUG_BUILD) {
+                Log.d("HomeGate", "RELEASE: catalogs=$hasCatalogContent cwResolved=$initialCwResolved cwItems=${uiState.continueWatchingItems.size} addons=${uiState.installedAddonsCount}")
+            }
             homeStableGateReleased = true
         }
     }
@@ -219,7 +232,9 @@ fun HomeScreen(
         // no addons at all.
         delay(HOME_STABLE_GATE_TIMEOUT_MS)
         if (!homeStableGateReleased) {
-            Log.d("HomeGate", "RELEASE timeout: isLoading=${uiState.isLoading} cwResolved=$initialCwResolved catalogs=$hasCatalogContent cwItems=${uiState.continueWatchingItems.size}")
+            if (BuildConfig.IS_DEBUG_BUILD) {
+                Log.d("HomeGate", "RELEASE timeout: isLoading=${uiState.isLoading} cwResolved=$initialCwResolved catalogs=$hasCatalogContent cwItems=${uiState.continueWatchingItems.size}")
+            }
             homeStableGateReleased = true
         }
     }
@@ -428,11 +443,17 @@ fun HomeScreen(
         }
 
         if (showHomeLoader) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                LoadingIndicator()
+            if (hasAnyContent) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    LoadingIndicator()
+                }
+            } else {
+                // Launch chain: a home-shaped skeleton reads as "content is on
+                // its way" instead of a bare spinner.
+                HomeSkeleton(posterCardStyle = posterCardStyle)
             }
         }
 
