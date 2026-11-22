@@ -2269,7 +2269,6 @@ private fun MetaDetailsContent(
     val isNavTransitionActive = navAnimatedVisibilityScope?.transition?.let {
         it.currentState != it.targetState
     } ?: false
-    Log.d("HeroMorph", "isNavTransitionActive=$isNavTransitionActive")
     LaunchedEffect(isNavTransitionActive) {
         if (!isNavTransitionActive) {
             onTransitionSettled()
