@@ -514,6 +514,7 @@ fun MetaDetailsScreen(
             restorePlayFocusAfterTrailerBackToken += 1
             isTrailerPaused = false
             viewModel.onEvent(MetaDetailsEvent.OnTrailerBackPress)
+            return@BackHandler
         } else {
             onBackPress()
         }

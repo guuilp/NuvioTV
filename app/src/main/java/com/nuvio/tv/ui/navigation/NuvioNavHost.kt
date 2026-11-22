@@ -102,17 +102,21 @@ private fun routePair(from: String, to: String): RoutePair = when {
 }
 
 // Home -> Detail: let the shared elements carry the motion. The home screen stays
-// put, while the detail screen's non-shared content fades in quickly.
+// put, while the detail screen's non-shared content fades in after the artwork
+// has started moving, so text doesn't land on a still-morphing backdrop.
 private fun homeToDetailEnter(): EnterTransition =
-    fadeIn(tween(250, easing = NuvioMotion.tokens.easings.standard))
+    fadeIn(tween(250, delayMillis = 150, easing = NuvioMotion.tokens.easings.standard))
 
 private fun homeToDetailExit(): ExitTransition = ExitTransition.None
 
-// Detail -> Home (pop): reverse — the detail screen stays put while home fades back in.
+// Detail -> Home (pop): reverse. Keep the detail composed for the full morph
+// duration (fade it out) instead of removing it instantly, otherwise the shared
+// element has no source bounds to animate back from.
 private fun detailToHomePopEnter(): EnterTransition =
-    fadeIn(tween(250, easing = NuvioMotion.tokens.easings.standard))
+    fadeIn(tween(250, delayMillis = 150, easing = NuvioMotion.tokens.easings.standard))
 
-private fun detailToHomePopExit(): ExitTransition = ExitTransition.None
+private fun detailToHomePopExit(): ExitTransition =
+    fadeOut(tween(NuvioMotion.tokens.durations.slow, easing = NuvioMotion.tokens.easings.standard))
 
 // Forward step into playback surfaces: brief scale-up + quick fade.
 private fun forwardStepEnter(duration: Int): EnterTransition =
