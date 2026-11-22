@@ -170,6 +170,7 @@ class MetaDetailsViewModel @Inject constructor(
     private var pendingHandoffAudioUrl: String? = null
     private var pendingHandoffPlayInBackground = false
     private var navTransitionSettled = false
+    private var postSettleDelayExpired = false
     private var postSettleTrailerJob: Job? = null
     private var suppressSeasonAutoSwitch = false
 
@@ -2889,14 +2890,10 @@ class MetaDetailsViewModel @Inject constructor(
         pendingHandoffAudioUrl = transfer?.audioUrl ?: poolHandoff?.audioUrl
         pendingHandoffPlayInBackground = playInBackground
 
-        if (!navTransitionSettled) {
-            // Defer actual playback until the home<->detail shared-element morph finishes,
-            // so the background trailer does not draw over the expanding backdrop.
-            pendingTrailerHandoff = true
-            return
-        }
-
-        commitTrailerHandoff()
+        pendingTrailerHandoff = true
+        // Defer actual playback until the home<->detail shared-element morph finishes
+        // AND the post-settle calm window has elapsed.
+        tryCommitTrailerHandoff()
     }
 
     private fun commitTrailerHandoff() {
@@ -2916,6 +2913,12 @@ class MetaDetailsViewModel @Inject constructor(
         )
     }
 
+    private fun tryCommitTrailerHandoff() {
+        if (!pendingTrailerHandoff) return
+        if (!navTransitionSettled || !postSettleDelayExpired) return
+        commitTrailerHandoff()
+    }
+
     /**
      * Called by the UI once the home<->detail shared-element nav transition has settled.
      * Until this fires, automatic trailer starts (handoff and idle-timer autoplay) are held back.
@@ -2927,9 +2930,8 @@ class MetaDetailsViewModel @Inject constructor(
         navTransitionSettled = true
         postSettleTrailerJob = viewModelScope.launch {
             delay(1500)
-            if (pendingTrailerHandoff) {
-                commitTrailerHandoff()
-            }
+            postSettleDelayExpired = true
+            tryCommitTrailerHandoff()
             startIdleTimer()
         }
     }
@@ -3027,7 +3029,7 @@ class MetaDetailsViewModel @Inject constructor(
         if (trailerHasPlayed) return
         if (!isPlayButtonFocused) return
         if (!navTransitionSettled) return
-        if (postSettleTrailerJob?.isActive == true) return
+        if (!postSettleDelayExpired) return
 
         idleTimerJob = viewModelScope.launch {
             delay(trailerDelayMs)
