@@ -74,8 +74,8 @@ fun Modifier.sharedDetailHeroBackdropSource(
             animatedVisibilityScope = navScope,
             boundsTransform = { _, _ ->
                 tween(
-                    durationMillis = NuvioMotion.tokens.durations.fast,
-                    easing = NuvioMotion.tokens.easings.standard
+                    durationMillis = NuvioMotion.tokens.durations.medium,
+                    easing = NuvioMotion.tokens.easings.emphasized
                 )
             }
         )
@@ -108,8 +108,8 @@ fun Modifier.sharedDetailHeroBackdropDestination(
             animatedVisibilityScope = navScope,
             boundsTransform = { _, _ ->
                 tween(
-                    durationMillis = NuvioMotion.tokens.durations.fast,
-                    easing = NuvioMotion.tokens.easings.standard
+                    durationMillis = NuvioMotion.tokens.durations.medium,
+                    easing = NuvioMotion.tokens.easings.emphasized
                 )
             }
         )
@@ -142,8 +142,8 @@ fun Modifier.sharedDetailHeroLogo(
             animatedVisibilityScope = navScope,
             boundsTransform = { _, _ ->
                 tween(
-                    durationMillis = NuvioMotion.tokens.durations.fast,
-                    easing = NuvioMotion.tokens.easings.standard
+                    durationMillis = NuvioMotion.tokens.durations.medium,
+                    easing = NuvioMotion.tokens.easings.emphasized
                 )
             }
         )
