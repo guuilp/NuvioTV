@@ -7,7 +7,12 @@ import android.widget.Toast
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.NuvioMotion
+import com.nuvio.tv.ui.navigation.LocalNavAnimatedVisibilityScope
+import com.nuvio.tv.ui.navigation.normalizedImageUrl
+import com.nuvio.tv.ui.navigation.sharedDetailHeroBackdropDestination
+import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
 
+import android.util.Log
 import android.view.KeyEvent
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
@@ -409,6 +414,7 @@ fun MetaDetailsScreen(
     returnFocusEpisode: Int? = null,
     heroRestoreToken: Int = 0,
     heroBackdropUrl: String? = null,
+    sharedElementItemId: String? = null,
     playOnLoad: Boolean = false,
     playOnLoadManually: Boolean = false,
     onBackPress: () -> Unit,
@@ -508,6 +514,7 @@ fun MetaDetailsScreen(
             restorePlayFocusAfterTrailerBackToken += 1
             isTrailerPaused = false
             viewModel.onEvent(MetaDetailsEvent.OnTrailerBackPress)
+            return@BackHandler
         } else {
             onBackPress()
         }
@@ -912,6 +919,7 @@ fun MetaDetailsScreen(
                         alpha = playOnLoadReturnContentAlpha
                     },
                     heroBackdropUrl = heroBackdropUrl,
+                    sharedElementItemId = sharedElementItemId,
                     meta = meta,
                     detailReturnEpisodeFocusRequest = DetailReturnEpisodeFocusRequest(
                         season = returnFocusSeason,
@@ -1146,7 +1154,8 @@ fun MetaDetailsScreen(
                     onNavigateToCastDetail = onNavigateToCastDetail,
                     onNavigateToTmdbEntityBrowse = onNavigateToTmdbEntityBrowse,
                     onNavigateToDetail = onNavigateToDetail,
-                    onPosterLongPress = { item -> viewModel.posterOptions.show(item, null) }
+                    onPosterLongPress = { item -> viewModel.posterOptions.show(item, null) },
+                    onTransitionSettled = viewModel::onTransitionSettled
                 )
             }
         }
@@ -1259,6 +1268,7 @@ fun MetaDetailsScreen(
 private fun MetaDetailsContent(
     modifier: Modifier = Modifier,
     heroBackdropUrl: String? = null,
+    sharedElementItemId: String? = null,
     meta: Meta,
     detailReturnEpisodeFocusRequest: DetailReturnEpisodeFocusRequest? = null,
     onDetailReturnEpisodeFocusConsumed: () -> Unit,
@@ -1365,7 +1375,8 @@ private fun MetaDetailsContent(
     onNavigateToCastDetail: (personId: Int, personName: String, preferCrew: Boolean) -> Unit = { _, _, _ -> },
     onNavigateToTmdbEntityBrowse: (entityKind: String, entityId: Int, entityName: String, sourceType: String) -> Unit = { _, _, _, _ -> },
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit = { _, _, _ -> },
-    onPosterLongPress: (MetaPreview) -> Unit = {}
+    onPosterLongPress: (MetaPreview) -> Unit = {},
+    onTransitionSettled: () -> Unit = {}
 ) {
     val playbackAvailability = LocalPlaybackAvailability.current
     val canLoadMoreComments = commentsCurrentPage in 1 until commentsPageCount
@@ -2255,9 +2266,19 @@ private fun MetaDetailsContent(
         with(localDensity) { screenHeightDp.roundToPx() }
     }
     val hasHeroBackdrop = !heroBackdropUrl.isNullOrBlank()
+    val navAnimatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
+    val isNavTransitionActive = navAnimatedVisibilityScope?.transition?.let {
+        it.currentState != it.targetState
+    } ?: false
+    LaunchedEffect(isNavTransitionActive) {
+        if (!isNavTransitionActive) {
+            onTransitionSettled()
+        }
+    }
     val seedBackdropUrl = heroBackdropUrl?.takeIf { it.isNotBlank() }
     val backdropDataUrl = meta.backdropUrl ?: meta.poster
-    val shouldReuseSeedBackdrop = seedBackdropUrl != null && seedBackdropUrl == backdropDataUrl
+    val shouldReuseSeedBackdrop = seedBackdropUrl != null &&
+        seedBackdropUrl.normalizedImageUrl() == backdropDataUrl?.normalizedImageUrl()
     val shouldShowSeedBackdropUnderlay = seedBackdropUrl != null && !shouldReuseSeedBackdrop
     val heroBackdropRequest = remember(
         localContext,
@@ -2279,15 +2300,20 @@ private fun MetaDetailsContent(
         shouldReuseSeedBackdrop,
         hasHeroBackdrop,
         heroBackdropRequest,
+        isNavTransitionActive,
         backdropWidthPx,
         backdropHeightPx
     ) {
-        if (shouldReuseSeedBackdrop && heroBackdropRequest != null) {
-            heroBackdropRequest
-        } else {
-            ImageRequest.Builder(localContext)
+        when {
+            // Exact same asset (possibly different TMDB size): one image, no swap ever needed.
+            shouldReuseSeedBackdrop && heroBackdropRequest != null -> heroBackdropRequest
+            // While the home→detail (or detail→home) morph is running, render only the handoff
+            // image so the user sees one continuous visual. The meta backdrop is loaded after
+            // the transition settles and crossfades in as a normal content refresh.
+            isNavTransitionActive && hasHeroBackdrop && heroBackdropRequest != null -> heroBackdropRequest
+            else -> ImageRequest.Builder(localContext)
                 .data(backdropDataUrl)
-                .apply { if (shouldShowSeedBackdropUnderlay) crossfade(400) else if (hasHeroBackdrop) crossfade(false) else crossfade(400) }
+                .crossfade(400)
                 .size(width = backdropWidthPx, height = backdropHeightPx)
                 .build()
         }
@@ -2374,6 +2400,7 @@ private fun MetaDetailsContent(
     // Always-composed bottom gradient alpha (avoids add/remove during scroll)
 
     val contentBackgroundTrailerController = LocalBackgroundTrailerController.current
+    val heroSharedElementKey = sharedElementItemId ?: meta.id
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -2384,26 +2411,42 @@ private fun MetaDetailsContent(
             }
             .onPreviewKeyEvent { randomEpisodePlaybackPending }
     ) {
-        // Sticky background — backdrop or trailer
-        BackdropLayer(
-            backdropRequest = backdropRequest,
-            heroBackdropRequest = if (shouldShowSeedBackdropUnderlay) heroBackdropRequest else null,
-            trailerUrl = trailerUrl,
-            trailerAudioUrl = trailerAudioUrl,
-            isTrailerPlaying = isTrailerPlaying,
-            isBackgroundTrailerPlaying = isBackgroundTrailerPlaying,
-            pauseBackgroundTrailerOnScroll = pauseBackgroundTrailerOnScroll,
-            isTrailerPaused = isTrailerPaused,
-            showTrailerControls = showTrailerControls,
-            trailerSeekToken = trailerSeekToken,
-            trailerSeekDeltaMs = trailerSeekDeltaMs,
-            onTrailerControlKey = onTrailerControlKey,
-            onTrailerProgressChanged = onTrailerProgressChanged,
-            onTrailerEnded = onTrailerEnded,
-            isScrolledPastHero = isScrolledPastHero,
-            leftGradient = leftGradientBitmap,
-            bottomGradient = bottomGradientBitmap,
-        )
+        // Sticky background — backdrop or trailer. Only this layer participates in the
+        // backdrop shared-element morph; the scrollable content stays outside the morph.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .sharedDetailHeroBackdropDestination(
+                    itemId = heroSharedElementKey,
+                    heroBackdropUrl = heroBackdropUrl
+                )
+        ) {
+            BackdropLayer(
+                backdropRequest = backdropRequest,
+                heroBackdropRequest = if (isNavTransitionActive && hasHeroBackdrop && !shouldReuseSeedBackdrop) {
+                    null
+                } else if (shouldShowSeedBackdropUnderlay) {
+                    heroBackdropRequest
+                } else {
+                    null
+                },
+                trailerUrl = trailerUrl,
+                trailerAudioUrl = trailerAudioUrl,
+                isTrailerPlaying = isTrailerPlaying,
+                isBackgroundTrailerPlaying = isBackgroundTrailerPlaying,
+                pauseBackgroundTrailerOnScroll = pauseBackgroundTrailerOnScroll,
+                isTrailerPaused = isTrailerPaused,
+                showTrailerControls = showTrailerControls,
+                trailerSeekToken = trailerSeekToken,
+                trailerSeekDeltaMs = trailerSeekDeltaMs,
+                onTrailerControlKey = onTrailerControlKey,
+                onTrailerProgressChanged = onTrailerProgressChanged,
+                onTrailerEnded = onTrailerEnded,
+                isScrolledPastHero = isScrolledPastHero,
+                leftGradient = leftGradientBitmap,
+                bottomGradient = bottomGradientBitmap,
+            )
+        }
 
         // Single scrollable column with hero + content
         CompositionLocalProvider(
@@ -2602,6 +2645,8 @@ private fun MetaDetailsContent(
                         randomEpisodeFocusRequester = randomEpisodeFocusRequester,
                         hideLogoDuringTrailer = hideLogoDuringTrailer,
                         isTrailerPlaying = isTrailerPlaying,
+                        logoSharedElementKey = sharedElementItemId ?: meta.id,
+                        descriptionSharedElementKey = sharedElementItemId ?: meta.id,
                         playButtonFocusRequester = heroPlayButtonFocusRequester,
                         onHeroActionFocused = {
                             if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {

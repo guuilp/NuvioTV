@@ -1,6 +1,9 @@
 package com.nuvio.tv.ui.components
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.navigation.sharedDetailHeroBackdropSource
+import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
+import com.nuvio.tv.ui.screens.home.HeroBackdropState
 
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.core.tween
@@ -84,6 +87,13 @@ fun GridContentCard(
     val cardDepthStyle = LocalCardDepthStyle.current
     val density = LocalDensity.current
     val globalLandscape = LocalLandscapePosterMode.current
+    val alwaysBackdropWithLogo = LocalAlwaysBackdropWithLogo.current
+    val effectiveLandscapePoster = if (globalLandscape && alwaysBackdropWithLogo) null else item.landscapePoster
+    val effectiveImageUrl = if (globalLandscape) {
+        effectiveLandscapePoster ?: item.background ?: item.poster
+    } else {
+        item.poster
+    }
     val effectivePosterShape = if (globalLandscape) PosterShape.LANDSCAPE else item.posterShape
 
     // Derive card height from item's posterShape aspect ratio while keeping width from posterCardStyle.
@@ -121,6 +131,9 @@ fun GridContentCard(
                 if (longPressTriggered) {
                     longPressTriggered = false
                 } else {
+                    if (!effectiveImageUrl.isNullOrBlank()) {
+                        HeroBackdropState.update(effectiveImageUrl)
+                    }
                     onClick()
                 }
             },
@@ -206,13 +219,6 @@ fun GridContentCard(
                 val context = LocalContext.current
                 val bgCardColor = NuvioTheme.colors.BackgroundCard
                 val bgPainter = remember(bgCardColor) { androidx.compose.ui.graphics.painter.ColorPainter(bgCardColor) }
-                val alwaysBackdropWithLogo = LocalAlwaysBackdropWithLogo.current
-                val effectiveLandscapePoster = if (globalLandscape && alwaysBackdropWithLogo) null else item.landscapePoster
-                val effectiveImageUrl = if (globalLandscape) {
-                    effectiveLandscapePoster ?: item.background ?: item.poster
-                } else {
-                    item.poster
-                }
                 val revalidationKey = com.nuvio.tv.core.image.rememberImageRevalidationKey(effectiveImageUrl)
                 val imageModel = remember(effectiveImageUrl, requestWidthPx, requestHeightPx, revalidationKey) {
                     val builder = ImageRequest.Builder(context)
@@ -237,7 +243,9 @@ fun GridContentCard(
                     AsyncImage(
                         model = imageModel,
                         contentDescription = item.name,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .sharedDetailHeroBackdropSource(item.id),
                         contentScale = ContentScale.Crop,
                         placeholder = bgPainter,
                         error = bgPainter,
@@ -280,7 +288,8 @@ fun GridContentCard(
                                 .align(Alignment.BottomStart)
                                 .fillMaxWidth(0.62f)
                                 .then(if (globalLandscape) Modifier.fillMaxHeight(0.34f) else Modifier.height(cardHeight * 0.34f))
-                                .padding(start = 10.dp, end = 10.dp, bottom = NuvioTheme.spacing.sm),
+                                .padding(start = 10.dp, end = 10.dp, bottom = NuvioTheme.spacing.sm)
+                                .sharedDetailHeroLogo(item.id, logoUrl = item.logo),
                             contentScale = ContentScale.Fit,
                             alignment = Alignment.CenterStart,
                             onError = { landscapeLogoFailed = true }
@@ -343,6 +352,7 @@ fun GridContentCard(
                             .fillMaxWidth()
                             .heightIn(max = cardHeight * 0.35f)
                             .padding(horizontal = NuvioTheme.spacing.lg, vertical = 14.dp)
+                            .sharedDetailHeroLogo(item.id, logoUrl = item.logo)
                     )
                 }
 

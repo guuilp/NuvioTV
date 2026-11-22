@@ -19,11 +19,14 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -73,6 +76,72 @@ import com.nuvio.tv.ui.screens.profile.ProfileSelectionScreen
 import com.nuvio.tv.ui.screens.tmdb.TmdbEntityBrowseScreen
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
 
+/**
+ * Classifies root-level navigation pairs so the NavHost can apply per-destination motion.
+ * Utility routes (Settings, Library, Search, Collections, etc.) fall through to [Other]
+ * and keep the existing plain cross-fade.
+ */
+private sealed class RoutePair {
+    data object HomeToDetail : RoutePair()
+    data object DetailToHome : RoutePair()
+    data object HomeOrDetailToStream : RoutePair()
+    data object StreamToPlayer : RoutePair()
+    data object StreamToHome : RoutePair()
+    data object PlayerToStream : RoutePair()
+    data object Other : RoutePair()
+}
+
+private fun routePair(from: String, to: String): RoutePair = when {
+    from == Screen.Home.route && to.startsWith("detail/") -> RoutePair.HomeToDetail
+    from.startsWith("detail/") && to == Screen.Home.route -> RoutePair.DetailToHome
+    (from == Screen.Home.route || from.startsWith("detail/")) && to.startsWith("stream/") -> RoutePair.HomeOrDetailToStream
+    from.startsWith("stream/") && to.startsWith("player/") -> RoutePair.StreamToPlayer
+    from.startsWith("stream/") && to == Screen.Home.route -> RoutePair.StreamToHome
+    from.startsWith("player/") && to.startsWith("stream/") -> RoutePair.PlayerToStream
+    else -> RoutePair.Other
+}
+
+// Home -> Detail: let the shared elements carry the motion. The home screen stays
+// put, while the detail screen's non-shared content fades in after the artwork
+// has started moving, so text doesn't land on a still-morphing backdrop.
+private fun homeToDetailEnter(): EnterTransition =
+    fadeIn(tween(250, delayMillis = 150, easing = NuvioMotion.tokens.easings.standard))
+
+private fun homeToDetailExit(): ExitTransition = ExitTransition.None
+
+// Detail -> Home (pop): reverse. Keep the detail composed for the full morph
+// duration (fade it out) instead of removing it instantly, otherwise the shared
+// element has no source bounds to animate back from.
+private fun detailToHomePopEnter(): EnterTransition =
+    fadeIn(tween(250, delayMillis = 150, easing = NuvioMotion.tokens.easings.standard))
+
+private fun detailToHomePopExit(): ExitTransition =
+    fadeOut(tween(NuvioMotion.tokens.durations.slow, easing = NuvioMotion.tokens.easings.standard))
+
+// Forward step into playback surfaces: brief scale-up + quick fade.
+private fun forwardStepEnter(duration: Int): EnterTransition =
+    fadeIn(tween(duration, easing = NuvioMotion.tokens.easings.standard)) +
+        scaleIn(tween(duration, easing = NuvioMotion.tokens.easings.standard), initialScale = 0.97f)
+
+private fun forwardStepExit(duration: Int): ExitTransition =
+    fadeOut(tween(duration, easing = NuvioMotion.tokens.easings.standard))
+
+// Reverse of the forward step, used when popping back from Stream / Player.
+private fun popStepEnter(duration: Int): EnterTransition =
+    fadeIn(tween(duration, easing = NuvioMotion.tokens.easings.standard)) +
+        scaleIn(tween(duration, easing = NuvioMotion.tokens.easings.standard), initialScale = 0.97f)
+
+private fun popStepExit(duration: Int): ExitTransition =
+    scaleOut(tween(duration, easing = NuvioMotion.tokens.easings.standard), targetScale = 0.97f) +
+        fadeOut(tween(duration, easing = NuvioMotion.tokens.easings.standard))
+
+// Default utility cross-fade.
+private fun crossFadeEnter(): EnterTransition =
+    fadeIn(tween(NuvioMotion.tokens.durations.medium))
+
+private fun crossFadeExit(): ExitTransition =
+    fadeOut(tween(NuvioMotion.tokens.durations.medium))
+
 @Composable
 fun NuvioNavHost(
     navController: NavHostController,
@@ -90,7 +159,13 @@ fun NuvioNavHost(
                 LocalBackgroundTrailerController.current?.let { controller ->
                     BackgroundTrailerLayer(controller = controller)
                 }
-                PlaybackNavHost(navController, startDestination, hideBuiltInHeaders, discoverIsRoot)
+                SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalSharedTransitionScope provides this@SharedTransitionLayout
+                    ) {
+                        PlaybackNavHost(navController, startDestination, hideBuiltInHeaders, discoverIsRoot)
+                    }
+                }
             }
         }
     }
@@ -104,9 +179,13 @@ private fun NavGraphBuilder.rootComposable(
     content: @Composable (NavBackStackEntry) -> Unit
 ) {
     composable(route) { backStackEntry ->
-        val inset = if (withInset) LocalRootContentInset.current else 0.dp
-        Box(modifier = Modifier.padding(start = inset)) {
-            content(backStackEntry)
+        CompositionLocalProvider(
+            LocalNavAnimatedVisibilityScope provides this@composable
+        ) {
+            val inset = if (withInset) LocalRootContentInset.current else 0.dp
+            Box(modifier = Modifier.padding(start = inset)) {
+                content(backStackEntry)
+            }
         }
     }
 }
@@ -165,10 +244,16 @@ private fun PlaybackNavHost(
             val isAutoPlayNav = targetState.arguments
                 ?.getString("autoPlayNav")
                 ?.toBooleanStrictOrNull() == true
+            // Autoplay handoff must not animate.
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                when (routePair(from, to)) {
+                    RoutePair.HomeToDetail -> homeToDetailEnter()
+                    RoutePair.HomeOrDetailToStream -> forwardStepEnter(NuvioMotion.tokens.durations.medium)
+                    RoutePair.StreamToPlayer -> forwardStepEnter(NuvioMotion.tokens.durations.fast)
+                    else -> crossFadeEnter()
+                }
             }
         },
         exitTransition = {
@@ -177,12 +262,19 @@ private fun PlaybackNavHost(
             val isAutoPlayNav = targetState.arguments
                 ?.getString("autoPlayNav")
                 ?.toBooleanStrictOrNull() == true
+            // Autoplay handoff must not animate.
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else if (isLeavingFramedHeroTrailer()) {
+                // Keep the framed hero trailer fully visible while the next screen fades in over it.
                 fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium), targetAlpha = 1f)
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                when (routePair(from, to)) {
+                    RoutePair.HomeToDetail -> homeToDetailExit()
+                    RoutePair.HomeOrDetailToStream -> forwardStepExit(NuvioMotion.tokens.durations.medium)
+                    RoutePair.StreamToPlayer -> forwardStepExit(NuvioMotion.tokens.durations.fast)
+                    else -> crossFadeExit()
+                }
             }
         },
         popEnterTransition = {
@@ -191,10 +283,16 @@ private fun PlaybackNavHost(
             val isAutoPlayNav = initialState.arguments
                 ?.getString("autoPlayNav")
                 ?.toBooleanStrictOrNull() == true
+            // Autoplay handoff must not animate on pop.
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                when (routePair(from, to)) {
+                    RoutePair.DetailToHome -> detailToHomePopEnter()
+                    RoutePair.PlayerToStream -> popStepEnter(NuvioMotion.tokens.durations.fast)
+                    RoutePair.StreamToHome -> popStepEnter(NuvioMotion.tokens.durations.medium)
+                    else -> crossFadeEnter()
+                }
             }
         },
         popExitTransition = {
@@ -203,10 +301,16 @@ private fun PlaybackNavHost(
             val isAutoPlayNav = initialState.arguments
                 ?.getString("autoPlayNav")
                 ?.toBooleanStrictOrNull() == true
+            // Autoplay handoff must not animate on pop.
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                when (routePair(from, to)) {
+                    RoutePair.DetailToHome -> detailToHomePopExit()
+                    RoutePair.PlayerToStream -> popStepExit(NuvioMotion.tokens.durations.fast)
+                    RoutePair.StreamToHome -> popStepExit(NuvioMotion.tokens.durations.medium)
+                    else -> crossFadeExit()
+                }
             }
         }
     ) {
@@ -289,7 +393,7 @@ private fun PlaybackNavHost(
 
             HomeScreen(
                 onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
-                    val heroBackdrop = HeroBackdropState.consumeAndClear()
+                    val heroBackdrop = HeroBackdropState.currentHeroBackdropUrl
                     navController.navigate(
                         Screen.Detail.createRoute(
                             itemId = itemId,
@@ -380,131 +484,134 @@ private fun PlaybackNavHost(
                 ServerCatalogDestination(navController, backStackEntry)
                 return@composable
             }
-            val savedState = backStackEntry.savedStateHandle
-            val returnToHomeOnBack = detailArgs
-                ?.getString("returnToHomeOnBack")
-                ?.toBooleanStrictOrNull() == true
-            val returnFocusSeason by savedState.getStateFlow(
-                "returnFocusSeason", detailArgs?.getString("returnFocusSeason")?.toIntOrNull()
-            ).collectAsState()
-            val returnFocusEpisode by savedState.getStateFlow(
-                "returnFocusEpisode", detailArgs?.getString("returnFocusEpisode")?.toIntOrNull()
-            ).collectAsState()
-            val heroRestoreToken by savedState.getStateFlow(
-                "heroRestoreToken", 0
-            ).collectAsState()
-            val heroBackdropUrl = detailArgs?.getString("heroBackdropUrl")?.takeIf { it.isNotBlank() }
-            val playOnLoad = detailArgs?.getString("playOnLoad")?.toBooleanStrictOrNull() == true
-            val manualSelection = detailArgs?.getString("manualSelection")?.toBooleanStrictOrNull() == true
-            DetailChildHost(parentNavController = navController) { childNav ->
-            MetaDetailsScreen(
-                returnFocusSeason = returnFocusSeason,
-                returnFocusEpisode = returnFocusEpisode,
-                heroRestoreToken = heroRestoreToken,
-                heroBackdropUrl = heroBackdropUrl,
-                playOnLoad = playOnLoad,
-                playOnLoadManually = manualSelection,
-                onReturnFocusConsumed = {
-                    savedState["returnFocusSeason"] = null
-                    savedState["returnFocusEpisode"] = null
-                },
-                onBackPress = {
-                    if (returnToHomeOnBack) {
-                        val popped = navController.popBackStack(Screen.Home.route, inclusive = false)
-                        if (!popped) {
-                            navController.navigate(Screen.Home.route) {
-                                launchSingleTop = true
+            CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this@composable) {
+                val savedState = backStackEntry.savedStateHandle
+                val returnToHomeOnBack = detailArgs
+                    ?.getString("returnToHomeOnBack")
+                    ?.toBooleanStrictOrNull() == true
+                val returnFocusSeason by savedState.getStateFlow(
+                    "returnFocusSeason", detailArgs?.getString("returnFocusSeason")?.toIntOrNull()
+                ).collectAsState()
+                val returnFocusEpisode by savedState.getStateFlow(
+                    "returnFocusEpisode", detailArgs?.getString("returnFocusEpisode")?.toIntOrNull()
+                ).collectAsState()
+                val heroRestoreToken by savedState.getStateFlow(
+                    "heroRestoreToken", 0
+                ).collectAsState()
+                val heroBackdropUrl = detailArgs?.getString("heroBackdropUrl")?.takeIf { it.isNotBlank() }
+                val playOnLoad = detailArgs?.getString("playOnLoad")?.toBooleanStrictOrNull() == true
+                val manualSelection = detailArgs?.getString("manualSelection")?.toBooleanStrictOrNull() == true
+                DetailChildHost(parentNavController = navController) { childNav ->
+                    MetaDetailsScreen(
+                        returnFocusSeason = returnFocusSeason,
+                        returnFocusEpisode = returnFocusEpisode,
+                        heroRestoreToken = heroRestoreToken,
+                        heroBackdropUrl = heroBackdropUrl,
+                        sharedElementItemId = detailArgs?.getString("itemId"),
+                        playOnLoad = playOnLoad,
+                        playOnLoadManually = manualSelection,
+                        onReturnFocusConsumed = {
+                            savedState["returnFocusSeason"] = null
+                            savedState["returnFocusEpisode"] = null
+                        },
+                        onBackPress = {
+                            if (returnToHomeOnBack) {
+                                val popped = navController.popBackStack(Screen.Home.route, inclusive = false)
+                                if (!popped) {
+                                    navController.navigate(Screen.Home.route) {
+                                        launchSingleTop = true
+                                    }
+                                }
+                            } else {
+                                navController.popBackStack()
                             }
+                        },
+                        onNavigateToCastDetail = { personId, personName, preferCrew ->
+                            childNav.navigate(Screen.CastDetail.createRoute(personId, personName, preferCrew))
+                        },
+                        onNavigateToTmdbEntityBrowse = { entityKind, entityId, entityName, sourceType ->
+                            childNav.navigate(
+                                Screen.TmdbEntityBrowse.createRoute(
+                                    entityKind = entityKind,
+                                    entityId = entityId,
+                                    entityName = entityName,
+                                    sourceType = sourceType
+                                )
+                            )
+                        },
+                        onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+                            childNav.navigateNestedDetail(itemId, itemType, addonBaseUrl)
+                        },
+                        onPlayClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
+                            navController.navigate(
+                                Screen.Stream.createRoute(
+                                    videoId = videoId,
+                                    contentType = contentType,
+                                    title = title,
+                                    poster = poster,
+                                    backdrop = backdrop,
+                                    logo = logo,
+                                    season = season,
+                                    episode = episode,
+                                    episodeName = episodeName,
+                                    genres = genres,
+                                    year = year,
+                                    contentId = contentId,
+                                    contentName = title,
+                                    runtime = runtime,
+                                    returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
+                                    contentLanguage = contentLanguage
+                                )
+                            )
+                        },
+                        onPlayManuallyClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
+                            navController.navigate(
+                                Screen.Stream.createRoute(
+                                    videoId = videoId,
+                                    contentType = contentType,
+                                    title = title,
+                                    poster = poster,
+                                    backdrop = backdrop,
+                                    logo = logo,
+                                    season = season,
+                                    episode = episode,
+                                    episodeName = episodeName,
+                                    genres = genres,
+                                    year = year,
+                                    contentId = contentId,
+                                    contentName = title,
+                                    runtime = runtime,
+                                    manualSelection = true,
+                                    returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
+                                    contentLanguage = contentLanguage
+                                )
+                            )
+                        },
+                        onPlayStartFromBeginningClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
+                            navController.navigate(
+                                Screen.Stream.createRoute(
+                                    videoId = videoId,
+                                    contentType = contentType,
+                                    title = title,
+                                    poster = poster,
+                                    backdrop = backdrop,
+                                    logo = logo,
+                                    season = season,
+                                    episode = episode,
+                                    episodeName = episodeName,
+                                    genres = genres,
+                                    year = year,
+                                    contentId = contentId,
+                                    contentName = title,
+                                    runtime = runtime,
+                                    startFromBeginning = true,
+                                    returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
+                                    contentLanguage = contentLanguage
+                                )
+                            )
                         }
-                    } else {
-                        navController.popBackStack()
-                    }
-                },
-                onNavigateToCastDetail = { personId, personName, preferCrew ->
-                    childNav.navigate(Screen.CastDetail.createRoute(personId, personName, preferCrew))
-                },
-                onNavigateToTmdbEntityBrowse = { entityKind, entityId, entityName, sourceType ->
-                    childNav.navigate(
-                        Screen.TmdbEntityBrowse.createRoute(
-                            entityKind = entityKind,
-                            entityId = entityId,
-                            entityName = entityName,
-                            sourceType = sourceType
-                        )
-                    )
-                },
-                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
-                    childNav.navigateNestedDetail(itemId, itemType, addonBaseUrl)
-                },
-                onPlayClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
-                    navController.navigate(
-                        Screen.Stream.createRoute(
-                            videoId = videoId,
-                            contentType = contentType,
-                            title = title,
-                            poster = poster,
-                            backdrop = backdrop,
-                            logo = logo,
-                            season = season,
-                            episode = episode,
-                            episodeName = episodeName,
-                            genres = genres,
-                            year = year,
-                            contentId = contentId,
-                            contentName = title,
-                            runtime = runtime,
-                            returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
-                            contentLanguage = contentLanguage
-                        )
-                    )
-                },
-                onPlayManuallyClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
-                    navController.navigate(
-                        Screen.Stream.createRoute(
-                            videoId = videoId,
-                            contentType = contentType,
-                            title = title,
-                            poster = poster,
-                            backdrop = backdrop,
-                            logo = logo,
-                            season = season,
-                            episode = episode,
-                            episodeName = episodeName,
-                            genres = genres,
-                            year = year,
-                            contentId = contentId,
-                            contentName = title,
-                            runtime = runtime,
-                            manualSelection = true,
-                            returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
-                            contentLanguage = contentLanguage
-                        )
-                    )
-                },
-                onPlayStartFromBeginningClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
-                    navController.navigate(
-                        Screen.Stream.createRoute(
-                            videoId = videoId,
-                            contentType = contentType,
-                            title = title,
-                            poster = poster,
-                            backdrop = backdrop,
-                            logo = logo,
-                            season = season,
-                            episode = episode,
-                            episodeName = episodeName,
-                            genres = genres,
-                            year = year,
-                            contentId = contentId,
-                            contentName = title,
-                            runtime = runtime,
-                            startFromBeginning = true,
-                            returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
-                            contentLanguage = contentLanguage
-                        )
                     )
                 }
-            )
             }
         }
 
@@ -1450,13 +1557,15 @@ private fun PlaybackNavHost(
                 navArgument("folderId") { type = NavType.StringType }
             )
         ) {
-            com.nuvio.tv.ui.screens.collection.FolderDetailScreen(
-                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
-                    val heroBackdrop = HeroBackdropState.consumeAndClear()
-                    navController.navigate(Screen.Detail.createRoute(itemId, itemType, addonBaseUrl, heroBackdropUrl = heroBackdrop))
-                },
-                onBack = { navController.popBackStack() }
-            )
+            CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this@composable) {
+                com.nuvio.tv.ui.screens.collection.FolderDetailScreen(
+                    onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+                        val heroBackdrop = HeroBackdropState.consumeAndClear()
+                        navController.navigate(Screen.Detail.createRoute(itemId, itemType, addonBaseUrl, heroBackdropUrl = heroBackdrop))
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
         }
 
         if (AppFeaturePolicy.pluginsEnabled) {
@@ -1511,39 +1620,40 @@ private fun PlaybackNavHost(
                 ServerCatalogDestination(navController, backStackEntry)
                 return@composable
             }
-
-            // When coming from search, get the SearchViewModel from the Search back stack entry
-            // so we share the same data (existing results + pagination)
-            val searchBackStackEntry = androidx.compose.runtime.remember(fromSearch) {
-                if (fromSearch) {
-                    try { navController.getBackStackEntry(Screen.Search.route) } catch (_: Exception) { null }
-                } else null
-            }
-            val searchViewModel: com.nuvio.tv.ui.screens.search.SearchViewModel? =
-                if (searchBackStackEntry != null) {
-                    androidx.hilt.navigation.compose.hiltViewModel<com.nuvio.tv.ui.screens.search.SearchViewModel>(searchBackStackEntry)
-                } else null
-            val homeBackStackEntry = androidx.compose.runtime.remember {
-                try { navController.getBackStackEntry(Screen.Home.route) } catch (_: Exception) { null }
-            }
-            val homeViewModel: com.nuvio.tv.ui.screens.home.HomeViewModel =
-                if (homeBackStackEntry != null) {
-                    androidx.hilt.navigation.compose.hiltViewModel(homeBackStackEntry)
-                } else {
-                    androidx.hilt.navigation.compose.hiltViewModel(backStackEntry)
+            CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this@composable) {
+                // When coming from search, get the SearchViewModel from the Search back stack entry
+                // so we share the same data (existing results + pagination)
+                val searchBackStackEntry = androidx.compose.runtime.remember(fromSearch) {
+                    if (fromSearch) {
+                        try { navController.getBackStackEntry(Screen.Search.route) } catch (_: Exception) { null }
+                    } else null
                 }
+                val searchViewModel: com.nuvio.tv.ui.screens.search.SearchViewModel? =
+                    if (searchBackStackEntry != null) {
+                        androidx.hilt.navigation.compose.hiltViewModel<com.nuvio.tv.ui.screens.search.SearchViewModel>(searchBackStackEntry)
+                    } else null
+                val homeBackStackEntry = androidx.compose.runtime.remember {
+                    try { navController.getBackStackEntry(Screen.Home.route) } catch (_: Exception) { null }
+                }
+                val homeViewModel: com.nuvio.tv.ui.screens.home.HomeViewModel =
+                    if (homeBackStackEntry != null) {
+                        androidx.hilt.navigation.compose.hiltViewModel(homeBackStackEntry)
+                    } else {
+                        androidx.hilt.navigation.compose.hiltViewModel(backStackEntry)
+                    }
 
-            CatalogSeeAllScreen(
-                catalogId = catalogId,
-                addonId = addonId,
-                type = type,
-                searchViewModel = searchViewModel,
-                viewModel = homeViewModel,
-                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
-                    navController.navigate(Screen.Detail.createRoute(itemId, itemType, addonBaseUrl))
-                },
-                onBackPress = { navController.popBackStack() }
-            )
+                CatalogSeeAllScreen(
+                    catalogId = catalogId,
+                    addonId = addonId,
+                    type = type,
+                    searchViewModel = searchViewModel,
+                    viewModel = homeViewModel,
+                    onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+                        navController.navigate(Screen.Detail.createRoute(itemId, itemType, addonBaseUrl))
+                    },
+                    onBackPress = { navController.popBackStack() }
+                )
+            }
         }
 
         composable(

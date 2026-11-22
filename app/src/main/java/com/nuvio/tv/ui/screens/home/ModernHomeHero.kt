@@ -58,6 +58,9 @@ import coil3.request.crossfade
 import com.nuvio.tv.ui.util.LocalRecompositionHighlighterEnabled
 import com.nuvio.tv.ui.util.contentTextDirection
 import com.nuvio.tv.ui.util.recompositionHighlighter
+import com.nuvio.tv.ui.navigation.sharedDetailHeroDescription
+import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
+import com.nuvio.tv.ui.navigation.sharedDetailHeroTitle
 import coil3.request.transitionFactory
 import com.nuvio.tv.R
 import kotlinx.coroutines.delay
@@ -457,7 +460,8 @@ private fun HeroTitleContent(
                 modifier = Modifier
                     .height(100.dp)
                     .widthIn(min = 100.dp, max = 220.dp)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .sharedDetailHeroLogo(preview.id, logoUrl = preview.logo),
                 contentScale = ContentScale.Fit,
                 alignment = Alignment.CenterStart
             )
@@ -467,7 +471,8 @@ private fun HeroTitleContent(
                 style = scaledTitleStyle,
                 color = NuvioTheme.colors.TextPrimary,
                 maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.sharedDetailHeroTitle(preview.id, title = preview.title)
             )
         }
 
@@ -707,7 +712,9 @@ private fun HeroTitleContent(
                 maxLines = descriptionMaxLines,
                 autoScrollEnabled = descriptionAutoScrollEnabled,
                 paused = trailerPlaying,
-                modifier = Modifier.graphicsLayer { alpha = metaAlpha }
+                modifier = Modifier
+                    .graphicsLayer { alpha = metaAlpha }
+                    .sharedDetailHeroDescription(preview.id, description = description)
             )
         }
     }

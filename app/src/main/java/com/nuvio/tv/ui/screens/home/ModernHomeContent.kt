@@ -749,6 +749,7 @@ fun ModernHomeContent(
                     val enrichedItem = activeItemId?.let { enrichedPreviews.value[it] }
                     val enrichedHero = if (enrichedItem != null) {
                         HeroPreview(
+                            id = activeItemId ?: "",
                             title = enrichedItem.name,
                             logo = enrichedItem.logo,
                             description = enrichedItem.description,

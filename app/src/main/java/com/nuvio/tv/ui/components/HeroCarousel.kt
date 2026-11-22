@@ -79,6 +79,11 @@ import com.nuvio.tv.ui.util.contentTextDirection
 import com.nuvio.tv.ui.util.formatHeroRuntime
 import com.nuvio.tv.ui.util.LocalRecompositionHighlighterEnabled
 import com.nuvio.tv.ui.util.localizedContentType
+import com.nuvio.tv.ui.navigation.sharedDetailHeroBackdropSource
+import com.nuvio.tv.ui.navigation.sharedDetailHeroDescription
+import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
+import com.nuvio.tv.ui.navigation.sharedDetailHeroTitle
+import com.nuvio.tv.ui.screens.home.HeroBackdropState
 import com.nuvio.tv.ui.util.localizedGenreLabel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -109,6 +114,10 @@ fun HeroCarousel(
     val currentOnItemClick by rememberUpdatedState(onItemClick)
     val currentOnItemFocus by rememberUpdatedState(onItemFocus)
     val currentOnActiveItemChanged by rememberUpdatedState(onActiveItemChanged)
+    fun performItemClick(item: MetaPreview) {
+        HeroBackdropState.update(item.backdropUrl)
+        currentOnItemClick(item)
+    }
     var activeIndex by remember { mutableIntStateOf(initialActiveIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) }
     var isFocused by remember { mutableStateOf(false) }
     // Slide whose description is still on its first scroll pass, or -1.
@@ -157,7 +166,7 @@ fun HeroCarousel(
                 role = Role.Button
                 contentDescription = items[activeIndex].name
                 onClick {
-                    currentOnItemClick(items[activeIndex])
+                    performItemClick(items[activeIndex])
                     true
                 }
             }
@@ -183,7 +192,7 @@ fun HeroCarousel(
                 } else if (event.type == KeyEventType.KeyUp &&
                     (event.key == Key.DirectionCenter || event.key == Key.Enter)
                 ) {
-                    currentOnItemClick(items[activeIndex])
+                    performItemClick(items[activeIndex])
                     true
                 } else {
                     false
@@ -318,7 +327,9 @@ private fun HeroCarouselSlide(
             HeroCarouselBackdrop(
                 item = item,
                 fullPage = false,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .sharedDetailHeroBackdropSource(item.id)
             )
         }
 
@@ -337,7 +348,8 @@ private fun HeroCarouselSlide(
                     modifier = Modifier
                         .height(100.dp)
                         .widthIn(min = 100.dp, max = 220.dp)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .sharedDetailHeroLogo(item.id, logoUrl = item.logo),
                     contentScale = ContentScale.Fit,
                     alignment = Alignment.CenterStart
                 )
@@ -347,7 +359,8 @@ private fun HeroCarouselSlide(
                     style = MaterialTheme.typography.headlineLarge,
                     color = NuvioTheme.colors.TextPrimary,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.sharedDetailHeroTitle(item.id, title = item.name)
                 )
             }
 
@@ -432,7 +445,8 @@ private fun HeroCarouselSlide(
                     color = NuvioTheme.colors.TextPrimary,
                     maxLines = 4,
                     autoScrollEnabled = descriptionAutoScrollEnabled,
-                    onScrollHoldChanged = onDescriptionScrollHoldChanged
+                    onScrollHoldChanged = onDescriptionScrollHoldChanged,
+                    modifier = Modifier.sharedDetailHeroDescription(item.id, description = description)
                 )
             }
         }

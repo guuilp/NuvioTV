@@ -43,6 +43,7 @@ internal val MODERN_LANDSCAPE_LOGO_GRADIENT = Brush.verticalGradient(
 
 @Immutable
 data class HeroPreview(
+    val id: String = "",
     val title: String,
     val logo: String?,
     val description: String?,
@@ -362,6 +363,7 @@ internal fun buildContinueWatchingItem(
                 else -> localizedContentType(context, item.progress.contentType)
             }
             HeroPreview(
+                id = item.progress.contentId,
                 title = item.progress.name,
                 logo = item.progress.logo,
                 description = item.episodeDescription ?: item.progress.episodeTitle?.localizeEpisodeTitle(context),
@@ -392,6 +394,7 @@ internal fun buildContinueWatchingItem(
             val episodeTitle = item.info.episodeTitle?.takeIf { it.isNotBlank() }?.localizeEpisodeTitle(context)
             val episodeLabel = if (episodeTitle != null) "$episodeCode · $episodeTitle" else episodeCode
             HeroPreview(
+                id = item.info.contentId,
                 title = item.info.name,
                 logo = item.info.logo,
                 description = item.info.episodeDescription
@@ -504,6 +507,7 @@ internal fun buildCatalogItem(
         ?: currentLogo
 
     val heroPreview = HeroPreview(
+        id = item.id,
         title = item.name,
         logo = item.logo,
         description = item.description,
@@ -581,6 +585,7 @@ internal fun buildCollectionFolderItem(
         subtitle = if (folder.hideTitle) null else collection.title,
         imageUrl = imageUrl,
         heroPreview = HeroPreview(
+            id = folder.id,
             title = if (folder.hideTitle) "" else title,
             logo = folder.titleLogoUrl,
             description = null,

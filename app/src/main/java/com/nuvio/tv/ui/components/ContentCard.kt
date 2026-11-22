@@ -74,6 +74,9 @@ import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.navigation.sharedDetailHeroBackdropSource
+import com.nuvio.tv.ui.navigation.sharedDetailHeroLogo
+import com.nuvio.tv.ui.screens.home.HeroBackdropState
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.CachePolicy
@@ -316,6 +319,9 @@ fun ContentCard(
                 if (longPressTriggered) {
                     longPressTriggered = false
                 } else {
+                    if (!imageUrl.isNullOrBlank() && imageUrl != PLACEHOLDER_IMAGE_URL) {
+                        HeroBackdropState.update(imageUrl)
+                    }
                     onClick()
                 }
             },
@@ -428,7 +434,9 @@ fun ContentCard(
                     AsyncImage(
                         model = imageModel,
                         contentDescription = item.name,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .sharedDetailHeroBackdropSource(item.id),
                         placeholder = backgroundPainter,
                         error = backgroundPainter,
                         fallback = backgroundPainter,
@@ -539,7 +547,8 @@ fun ContentCard(
                                 onError = { logoLoadFailed = true },
                                 modifier = Modifier
                                     .height(NuvioTheme.spacing.xxxl)
-                                    .fillMaxWidth(),
+                                    .fillMaxWidth()
+                                    .sharedDetailHeroLogo(item.id, logoUrl = item.logo),
                                 contentScale = ContentScale.Fit,
                                 alignment = Alignment.CenterStart
                             )
@@ -587,7 +596,8 @@ fun ContentCard(
                             .fillMaxWidth(0.62f)
                             .height(baseCardHeight * 0.34f)
                             .padding(start = 10.dp, end = 10.dp, bottom = NuvioTheme.spacing.sm)
-                            .zIndex(1.6f),
+                            .zIndex(1.6f)
+                            .sharedDetailHeroLogo(item.id, logoUrl = item.logo),
                         contentScale = ContentScale.Fit,
                         alignment = Alignment.CenterStart
                     )
