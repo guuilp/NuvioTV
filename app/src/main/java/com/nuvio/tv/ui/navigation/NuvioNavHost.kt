@@ -24,6 +24,8 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -72,6 +74,73 @@ import com.nuvio.tv.ui.screens.profile.ProfileSelectionMode
 import com.nuvio.tv.ui.screens.profile.ProfileSelectionScreen
 import com.nuvio.tv.ui.screens.tmdb.TmdbEntityBrowseScreen
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
+
+/**
+ * Classifies root-level navigation pairs so the NavHost can apply per-destination motion.
+ * Utility routes (Settings, Library, Search, Collections, etc.) fall through to [Other]
+ * and keep the existing plain cross-fade.
+ */
+private sealed class RoutePair {
+    data object HomeToDetail : RoutePair()
+    data object DetailToHome : RoutePair()
+    data object HomeOrDetailToStream : RoutePair()
+    data object StreamToPlayer : RoutePair()
+    data object StreamToHome : RoutePair()
+    data object PlayerToStream : RoutePair()
+    data object Other : RoutePair()
+}
+
+private fun routePair(from: String, to: String): RoutePair = when {
+    from == Screen.Home.route && to.startsWith("detail/") -> RoutePair.HomeToDetail
+    from.startsWith("detail/") && to == Screen.Home.route -> RoutePair.DetailToHome
+    (from == Screen.Home.route || from.startsWith("detail/")) && to.startsWith("stream/") -> RoutePair.HomeOrDetailToStream
+    from.startsWith("stream/") && to.startsWith("player/") -> RoutePair.StreamToPlayer
+    from.startsWith("stream/") && to == Screen.Home.route -> RoutePair.StreamToHome
+    from.startsWith("player/") && to.startsWith("stream/") -> RoutePair.PlayerToStream
+    else -> RoutePair.Other
+}
+
+// Home -> Detail: the pressed card expands into the detail page.
+private fun homeToDetailEnter(): EnterTransition =
+    fadeIn(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.emphasized)) +
+        scaleIn(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.emphasized), initialScale = 0.94f)
+
+private fun homeToDetailExit(): ExitTransition =
+    scaleOut(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.standard), targetScale = 0.97f) +
+        fadeOut(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.standard))
+
+// Detail -> Home (pop): the detail page recedes and the home screen returns to full size.
+private fun detailToHomePopEnter(): EnterTransition =
+    fadeIn(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.decelerate)) +
+        scaleIn(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.decelerate), initialScale = 0.97f)
+
+private fun detailToHomePopExit(): ExitTransition =
+    scaleOut(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.decelerate), targetScale = 0.96f) +
+        fadeOut(tween(NuvioMotion.tokens.durations.medium, easing = NuvioMotion.tokens.easings.decelerate))
+
+// Forward step into playback surfaces: brief scale-up + quick fade.
+private fun forwardStepEnter(duration: Int): EnterTransition =
+    fadeIn(tween(duration, easing = NuvioMotion.tokens.easings.standard)) +
+        scaleIn(tween(duration, easing = NuvioMotion.tokens.easings.standard), initialScale = 0.97f)
+
+private fun forwardStepExit(duration: Int): ExitTransition =
+    fadeOut(tween(duration, easing = NuvioMotion.tokens.easings.standard))
+
+// Reverse of the forward step, used when popping back from Stream / Player.
+private fun popStepEnter(duration: Int): EnterTransition =
+    fadeIn(tween(duration, easing = NuvioMotion.tokens.easings.standard)) +
+        scaleIn(tween(duration, easing = NuvioMotion.tokens.easings.standard), initialScale = 0.97f)
+
+private fun popStepExit(duration: Int): ExitTransition =
+    scaleOut(tween(duration, easing = NuvioMotion.tokens.easings.standard), targetScale = 0.97f) +
+        fadeOut(tween(duration, easing = NuvioMotion.tokens.easings.standard))
+
+// Default utility cross-fade.
+private fun crossFadeEnter(): EnterTransition =
+    fadeIn(tween(NuvioMotion.tokens.durations.medium))
+
+private fun crossFadeExit(): ExitTransition =
+    fadeOut(tween(NuvioMotion.tokens.durations.medium))
 
 @Composable
 fun NuvioNavHost(
@@ -165,10 +234,16 @@ private fun PlaybackNavHost(
             val isAutoPlayNav = targetState.arguments
                 ?.getString("autoPlayNav")
                 ?.toBooleanStrictOrNull() == true
+            // Autoplay handoff must not animate.
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                when (routePair(from, to)) {
+                    RoutePair.HomeToDetail -> homeToDetailEnter()
+                    RoutePair.HomeOrDetailToStream -> forwardStepEnter(NuvioMotion.tokens.durations.medium)
+                    RoutePair.StreamToPlayer -> forwardStepEnter(NuvioMotion.tokens.durations.fast)
+                    else -> crossFadeEnter()
+                }
             }
         },
         exitTransition = {
@@ -177,12 +252,19 @@ private fun PlaybackNavHost(
             val isAutoPlayNav = targetState.arguments
                 ?.getString("autoPlayNav")
                 ?.toBooleanStrictOrNull() == true
+            // Autoplay handoff must not animate.
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else if (isLeavingFramedHeroTrailer()) {
+                // Keep the framed hero trailer fully visible while the next screen fades in over it.
                 fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium), targetAlpha = 1f)
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                when (routePair(from, to)) {
+                    RoutePair.HomeToDetail -> homeToDetailExit()
+                    RoutePair.HomeOrDetailToStream -> forwardStepExit(NuvioMotion.tokens.durations.medium)
+                    RoutePair.StreamToPlayer -> forwardStepExit(NuvioMotion.tokens.durations.fast)
+                    else -> crossFadeExit()
+                }
             }
         },
         popEnterTransition = {
@@ -191,10 +273,16 @@ private fun PlaybackNavHost(
             val isAutoPlayNav = initialState.arguments
                 ?.getString("autoPlayNav")
                 ?.toBooleanStrictOrNull() == true
+            // Autoplay handoff must not animate on pop.
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                when (routePair(from, to)) {
+                    RoutePair.DetailToHome -> detailToHomePopEnter()
+                    RoutePair.PlayerToStream -> popStepEnter(NuvioMotion.tokens.durations.fast)
+                    RoutePair.StreamToHome -> popStepEnter(NuvioMotion.tokens.durations.medium)
+                    else -> crossFadeEnter()
+                }
             }
         },
         popExitTransition = {
@@ -203,10 +291,16 @@ private fun PlaybackNavHost(
             val isAutoPlayNav = initialState.arguments
                 ?.getString("autoPlayNav")
                 ?.toBooleanStrictOrNull() == true
+            // Autoplay handoff must not animate on pop.
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                when (routePair(from, to)) {
+                    RoutePair.DetailToHome -> detailToHomePopExit()
+                    RoutePair.PlayerToStream -> popStepExit(NuvioMotion.tokens.durations.fast)
+                    RoutePair.StreamToHome -> popStepExit(NuvioMotion.tokens.durations.medium)
+                    else -> crossFadeExit()
+                }
             }
         }
     ) {
