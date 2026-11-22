@@ -1,6 +1,8 @@
 package com.nuvio.tv.domain.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WatchProgressTest {
@@ -82,6 +84,50 @@ class WatchProgressTest {
         )
         val result = wp.resolveResumePosition(actualDuration = 0)
         assertEquals(0, result)
+    }
+
+    @Test
+    fun `isInProgress ignores accidental peeks below the resume floor`() {
+        val peek = watchProgress(
+            position = 4_000,
+            duration = 7_200_000
+        )
+        assertFalse(peek.isInProgress())
+    }
+
+    @Test
+    fun `isInProgress keeps positions at or above the resume floor`() {
+        val genuine = watchProgress(
+            position = WatchProgress.MIN_IN_PROGRESS_MS,
+            duration = 7_200_000
+        )
+        assertTrue(genuine.isInProgress())
+    }
+
+    @Test
+    fun `isInProgress keeps percent-only sources from two percent`() {
+        val atFloor = watchProgress(position = 0, duration = 0, progressPercent = 2f)
+        val underFloor = watchProgress(position = 0, duration = 0, progressPercent = 1.9f)
+        assertTrue(atFloor.isInProgress())
+        assertFalse(underFloor.isInProgress())
+    }
+
+    @Test
+    fun `resolveResumePosition starts fresh below the resume floor`() {
+        val peek = watchProgress(
+            position = 4_000,
+            duration = 7_200_000
+        )
+        assertEquals(0, peek.resolveResumePosition(actualDuration = 7_200_000))
+    }
+
+    @Test
+    fun `resolveResumePosition does not clamp legitimate large positions`() {
+        val genuine = watchProgress(
+            position = 12_345_678,
+            duration = 7_200_000
+        )
+        assertEquals(7_200_000, genuine.resolveResumePosition(actualDuration = 7_200_000))
     }
 
     private fun watchProgress(

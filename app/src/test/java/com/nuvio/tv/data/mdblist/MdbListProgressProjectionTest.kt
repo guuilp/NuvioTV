@@ -29,7 +29,10 @@ class MdbListProgressProjectionTest {
         for (percent in listOf(0f, 0.99f, 1f, 79.99f, 80f, 99f, 100f)) {
             val projection = projection(playback = listOf(mdbListTestPlayback(percent)))
             assertEquals(percent < 80f, projection.progress.isNotEmpty())
-            if (percent < 80f) assertEquals(percent > 0f, projection.progress.single().isInProgress())
+            if (percent < 80f) {
+                // Resume polish: percent-only sources need 2% to count as in progress.
+                assertEquals(percent >= 2f, projection.progress.single().isInProgress())
+            }
         }
         val progress = projection(playback = listOf(mdbListTestPlayback(79f))).progress.single().copy(progressPercent = 80f)
         assertTrue(progress.isCompleted())

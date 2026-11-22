@@ -74,6 +74,8 @@ internal fun PlayerRuntimeController.releasePlayer(
     hideStreamSourceIndicatorJob?.cancel()
     hideStreamSourceIndicatorJob = null
     _uiState.update { it.copy(showStreamSourceIndicator = false) }
+    hideResumeNoticeJob?.cancel()
+    hideResumeNoticeJob = null
     hidePlayerEngineSwitchInfoJob?.cancel()
     hideSubtitleDelayOverlayJob?.cancel()
     subtitleAutoSyncLoadJob?.cancel()

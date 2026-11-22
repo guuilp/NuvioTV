@@ -139,6 +139,9 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
                 "playbackSpeed=${_uiState.value.playbackSpeed} resumePositionMs=$initialResumePosition"
         )
         if (initialResumePosition > 0L) {
+            // Resume polish: mpv receives the resume position with setMedia, so
+            // raise the same chip as the ExoPlayer initial path.
+            showResumeNotice(initialResumePosition)
             clearPendingInitialResumePosition()
             _uiState.update { it.copy(pendingSeekPosition = null) }
             updatePlaybackTimeline(currentPosition = initialResumePosition)
@@ -568,6 +571,9 @@ internal fun PlayerRuntimeController.applyPendingMpvSeekIfNeeded(
     if (!canSeekNow) return
 
     view.seekToMs(target)
+    // Resume polish: mirror the ExoPlayer path so the same notice appears when
+    // the mpv engine seeks to saved progress on open.
+    if (savedResume != null) showResumeNotice(target)
     view.setSubtitleDelayMs(mpvSubtitleDelayMs(state.subtitleDelayMs))
     view.setAudioDelayMs(state.audioDelayMs)
     if (state.pendingSeekPosition != target) {

@@ -5,6 +5,7 @@ import com.nuvio.tv.core.player.OpenSubtitlesHasher
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.SeekParameters
 import com.nuvio.tv.data.local.FrameRateMatchingMode
 import com.nuvio.tv.data.local.InternalPlayerEngine
 import com.nuvio.tv.data.repository.SkipInterval
@@ -746,9 +747,49 @@ internal fun PlayerRuntimeController.tryApplyPendingResumeProgress(player: Playe
 
     if (target > 0L) {
         player.seekTo(target)
+        // Resume polish: the seek is silent otherwise, so surface where playback
+        // resumed and offer the "Start over" action for a few seconds.
+        showResumeNotice(target)
     }
     _uiState.update { it.copy(pendingSeekPosition = null) }
     pendingResumeProgress = null
+}
+
+/** Resume polish: transient chip shown after an automatic resume seek. */
+internal fun PlayerRuntimeController.showResumeNotice(positionMs: Long) {
+    hideResumeNoticeJob?.cancel()
+    _uiState.update { it.copy(resumeNotice = ResumeNotice(positionMs)) }
+    hideResumeNoticeJob = scope.launch {
+        delay(5_000L)
+        _uiState.update { state ->
+            if (state.resumeNotice?.positionMs == positionMs) {
+                state.copy(resumeNotice = null)
+            } else {
+                state
+            }
+        }
+    }
+}
+
+/**
+ * Resume polish: "Start over" jumps to 0:00 and drops any state that assumed the
+ * resumed position (pending resume seek and the skip-intro segment at that spot).
+ * Periodic progress saving then persists the new, near-zero position normally.
+ */
+internal fun PlayerRuntimeController.startOverFromResumeNotice() {
+    hideResumeNoticeJob?.cancel()
+    hideResumeNoticeJob = null
+    pendingResumeProgress = null
+    _uiState.update {
+        it.copy(
+            resumeNotice = null,
+            pendingSeekPosition = null,
+            activeSkipInterval = null
+        )
+    }
+    seekPlaybackTo(0L, SeekParameters.EXACT, exact = true)
+    updatePlaybackTimeline(currentPosition = 0L)
+    scheduleProgressSyncAfterSeek()
 }
 
 internal fun PlayerRuntimeController.resolvePendingInitialResumePosition(): Long {

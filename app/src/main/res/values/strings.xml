@@ -3529,4 +3529,6 @@
     <string name="autosync_status_failed">Failed</string>
     <string name="stream_resume_from_time">Resume from %1$s</string>
     <string name="stream_resume_from_percent">Resume from %1$d%%</string>
+    <string name="player_resumed_from">Resumed from %1$s</string>
+    <string name="player_resume_start_over">Start over</string>
 </resources>
